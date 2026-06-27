@@ -120,7 +120,7 @@ async function fetchFromCoinGecko(endpoint: string, params: Record<string, any> 
       baseUrl = "https://pro-api.coingecko.com/api/v3";
       headers["x-cg-pro-api-key"] = apiKey;
     } else {
-      baseUrl = "https://demo-api.coingecko.com/api/v3";
+      baseUrl = "https://api.coingecko.com/api/v3";
       headers["x-cg-demo-api-key"] = apiKey;
     }
   }
