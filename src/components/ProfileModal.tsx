@@ -1,0 +1,576 @@
+import React, { useState, useEffect } from 'react';
+import { 
+  Wallet, 
+  QrCode, 
+  User, 
+  Image as ImageIcon, 
+  Upload, 
+  Check, 
+  Copy, 
+  LogOut, 
+  ChevronRight, 
+  Sparkles, 
+  Coins, 
+  Globe, 
+  Camera, 
+  ExternalLink,
+  Smartphone,
+  Shield,
+  Loader2
+} from 'lucide-react';
+import { 
+  Dialog, 
+  DialogContent, 
+  DialogHeader, 
+  DialogTitle, 
+  DialogDescription,
+  DialogFooter,
+  DialogClose
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { Separator } from '@/components/ui/separator';
+
+interface ProfileModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  walletAddress: string | null;
+  setWalletAddress: (address: string | null) => void;
+  username: string;
+  setUsername: (name: string) => void;
+  avatarUrl: string;
+  setAvatarUrl: (url: string) => void;
+  connectedBlockchain: string;
+  setConnectedBlockchain: (chain: string) => void;
+  walletType: string;
+  setWalletType: (type: string) => void;
+}
+
+const BLOCKCHAINS = [
+  { id: 'solana', name: 'Solana', icon: '☀️', defaultSymbol: 'SOL', prefix: 'Hw' },
+  { id: 'ethereum', name: 'Ethereum', icon: '⟠', defaultSymbol: 'ETH', prefix: '0x' },
+  { id: 'polygon', name: 'Polygon', icon: '💜', defaultSymbol: 'POL', prefix: '0x' },
+  { id: 'bitcoin', name: 'Bitcoin', icon: '₿', defaultSymbol: 'BTC', prefix: 'bc1' },
+];
+
+const WALLETS = [
+  { id: 'phantom', name: 'Phantom', description: 'Default Web3 client (Recommended)', isDefault: true },
+  { id: 'metamask', name: 'MetaMask', description: 'EVM Wallet Provider', isDefault: false },
+  { id: 'walletconnect', name: 'WalletConnect', description: 'Scan QR with any mobile wallet', isDefault: false },
+  { id: 'coinbase', name: 'Coinbase Wallet', description: 'Coinbase custodial & non-custodial', isDefault: false },
+];
+
+const PRESET_AVATARS = [
+  { name: 'Apex Lion', url: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=150&auto=format&fit=crop&q=80' },
+  { name: 'Gold Sphere', url: 'https://images.unsplash.com/photo-1621761191319-c6fb62004040?w=150&auto=format&fit=crop&q=80' },
+  { name: 'Neon Arcade', url: 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?w=150&auto=format&fit=crop&q=80' },
+  { name: 'Stellar Dust', url: 'https://images.unsplash.com/photo-1614728894747-a83421e2b9c9?w=150&auto=format&fit=crop&q=80' },
+  { name: 'Cyberpunk Red', url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80' },
+  { name: 'Ethereal Man', url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80' },
+];
+
+export default function ProfileModal({
+  isOpen,
+  onClose,
+  walletAddress,
+  setWalletAddress,
+  username,
+  setUsername,
+  avatarUrl,
+  setAvatarUrl,
+  connectedBlockchain,
+  setConnectedBlockchain,
+  walletType,
+  setWalletType,
+}: ProfileModalProps) {
+  const [activeTab, setActiveTab] = useState<'wallet' | 'profile'>(walletAddress ? 'profile' : 'wallet');
+  const [selectedWallet, setSelectedWallet] = useState<string>('phantom');
+  const [selectedChain, setSelectedChain] = useState<string>('solana');
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [customAvatarInput, setCustomAvatarInput] = useState(avatarUrl);
+  const [tempUsername, setTempUsername] = useState(username);
+  const [qrCodeView, setQrCodeView] = useState(false);
+  const [isScanning, setIsScanning] = useState(false);
+
+  // Synchronize tabs and temporary values on open
+  useEffect(() => {
+    setActiveTab(walletAddress ? 'profile' : 'wallet');
+    setTempUsername(username);
+    setCustomAvatarInput(avatarUrl);
+    setQrCodeView(false);
+    setIsScanning(false);
+  }, [isOpen, walletAddress, username, avatarUrl]);
+
+  const handleCopyAddress = () => {
+    if (!walletAddress) return;
+    navigator.clipboard.writeText(walletAddress);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleWalletConnect = () => {
+    setIsConnecting(true);
+    setTimeout(() => {
+      // Find chain metadata
+      const chain = BLOCKCHAINS.find(c => c.id === selectedChain) || BLOCKCHAINS[0];
+      const wallet = WALLETS.find(w => w.id === selectedWallet) || WALLETS[0];
+      
+      // Generate a realistic address mock
+      let generatedAddress = '';
+      if (chain.id === 'solana') {
+        const chars = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+        generatedAddress = 'Hw' + Array.from({ length: 38 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+      } else if (chain.id === 'ethereum' || chain.id === 'polygon') {
+        const hex = '0123456789abcdef';
+        generatedAddress = '0x' + Array.from({ length: 40 }, () => hex[Math.floor(Math.random() * hex.length)]).join('');
+      } else {
+        const chars = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+        generatedAddress = 'bc1q' + Array.from({ length: 38 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+      }
+
+      setWalletAddress(generatedAddress);
+      setConnectedBlockchain(chain.name);
+      setWalletType(wallet.name);
+      setIsConnecting(false);
+      setActiveTab('profile');
+    }, 1500);
+  };
+
+  const handleQrConnect = () => {
+    setIsScanning(true);
+    setTimeout(() => {
+      // Standard EVM scan simulation
+      const hex = '0123456789abcdef';
+      const mockAddress = '0x' + Array.from({ length: 40 }, () => hex[Math.floor(Math.random() * hex.length)]).join('');
+      setWalletAddress(mockAddress);
+      setConnectedBlockchain('Ethereum');
+      setWalletType('WalletConnect');
+      setIsScanning(false);
+      setQrCodeView(false);
+      setActiveTab('profile');
+    }, 2000);
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        if (typeof reader.result === 'string') {
+          setAvatarUrl(reader.result);
+          setCustomAvatarInput(reader.result);
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleSaveProfile = () => {
+    setUsername(tempUsername);
+    setAvatarUrl(customAvatarInput);
+    onClose();
+  };
+
+  const handleDisconnect = () => {
+    setWalletAddress(null);
+    setActiveTab('wallet');
+  };
+
+  return (
+    <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="max-w-md w-full bg-card border border-border/80 text-foreground p-0 overflow-hidden shadow-2xl rounded-2xl">
+        {/* Modal Banner Header */}
+        <div className="relative h-28 bg-gradient-to-br from-orange-600/30 via-orange-950/40 to-background flex items-end p-5 border-b border-border/40">
+          <div className="absolute top-4 left-4 inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-orange-500/10 border border-orange-500/20 text-orange-400 text-[10px] font-mono uppercase font-bold tracking-wider">
+            <Sparkles className="w-3 h-3" />
+            Lions Swarm Web3 Portal
+          </div>
+          <div className="z-10 flex items-center gap-3">
+            <div className="relative">
+              <div className="w-14 h-14 rounded-xl overflow-hidden border-2 border-primary/60 shadow-lg bg-card flex items-center justify-center">
+                {avatarUrl ? (
+                  <img src={avatarUrl} alt="Avatar" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                ) : (
+                  <User className="w-6 h-6 text-muted-foreground" />
+                )}
+              </div>
+              {walletAddress && (
+                <span className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-emerald-500 border-2 border-card flex items-center justify-center text-[8px] text-white">
+                  ✓
+                </span>
+              )}
+            </div>
+            <div>
+              <h2 className="text-lg font-bold font-mono tracking-tight leading-none text-foreground">{username}</h2>
+              <p className="text-[11px] text-muted-foreground mt-1">
+                {walletAddress ? (
+                  <span className="font-mono text-emerald-400">Connected to {walletType} ({connectedBlockchain})</span>
+                ) : (
+                  <span className="text-muted-foreground">Sign in with a Web3 Wallet</span>
+                )}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Tab Selector */}
+        <div className="flex border-b border-border/40 bg-muted/20">
+          <button
+            onClick={() => { if (!qrCodeView) setActiveTab('wallet'); }}
+            disabled={qrCodeView}
+            className={`flex-1 py-3 text-center text-xs font-mono uppercase tracking-wider font-bold border-b-2 transition-all cursor-pointer ${
+              activeTab === 'wallet' && !qrCodeView
+                ? 'border-primary text-primary bg-primary/5'
+                : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/10'
+            }`}
+          >
+            Wallet Connection
+          </button>
+          <button
+            onClick={() => { if (!qrCodeView) setActiveTab('profile'); }}
+            disabled={qrCodeView}
+            className={`flex-1 py-3 text-center text-xs font-mono uppercase tracking-wider font-bold border-b-2 transition-all cursor-pointer ${
+              activeTab === 'profile' && !qrCodeView
+                ? 'border-primary text-primary bg-primary/5'
+                : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/10'
+            }`}
+          >
+            Profile Settings
+          </button>
+        </div>
+
+        {/* Content Box */}
+        <div className="p-5 max-h-[400px] overflow-y-auto">
+          {qrCodeView ? (
+            /* QR CODE SIGN-IN VIEW */
+            <div className="space-y-4 py-2 flex flex-col items-center justify-center text-center">
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-muted text-muted-foreground text-[10px] font-mono uppercase font-bold tracking-wider mb-2">
+                <QrCode className="w-3.5 h-3.5" />
+                Scan to Connect Wallet
+              </div>
+              
+              <div className="relative p-4 bg-white rounded-xl shadow-lg border-2 border-primary/20">
+                {/* Simulated Beautiful QR Code */}
+                <div className="w-40 h-40 bg-slate-900 rounded flex flex-col items-center justify-center relative overflow-hidden">
+                  <div className="absolute inset-2 border border-orange-500/20 rounded flex flex-col items-center justify-center text-white/90">
+                    {/* QR Finder patterns simulated in CSS */}
+                    <div className="absolute top-1 left-1 w-6 h-6 border-2 border-orange-500 bg-orange-500/10"></div>
+                    <div className="absolute top-1 right-1 w-6 h-6 border-2 border-orange-500 bg-orange-500/10"></div>
+                    <div className="absolute bottom-1 left-1 w-6 h-6 border-2 border-orange-500 bg-orange-500/10"></div>
+                    {/* Matrix simulation */}
+                    <div className="grid grid-cols-4 gap-2 opacity-85">
+                      <div className="w-4 h-4 bg-orange-500 rounded-sm"></div>
+                      <div className="w-4 h-4 bg-orange-500 rounded-sm"></div>
+                      <div className="w-4 h-4 bg-orange-500 rounded-sm"></div>
+                      <div className="w-4 h-4 bg-orange-500 rounded-sm"></div>
+                      <div className="w-4 h-4 bg-orange-500 rounded-sm"></div>
+                      <div className="w-4 h-4 bg-transparent"></div>
+                      <div className="w-4 h-4 bg-orange-500 rounded-sm"></div>
+                      <div className="w-4 h-4 bg-orange-500 rounded-sm"></div>
+                    </div>
+                  </div>
+                  {/* Neon scan-line */}
+                  {isScanning && (
+                    <div className="absolute left-0 right-0 h-0.5 bg-orange-500 shadow-[0_0_12px_#f97316] animate-bounce top-1/2"></div>
+                  )}
+                </div>
+              </div>
+
+              <div className="space-y-1 max-w-xs mt-2">
+                <p className="text-xs font-semibold">Authorized Secure Login</p>
+                <p className="text-[11px] text-muted-foreground">Scan with Phantom, WalletConnect, or MetaMask on your mobile device to establish a pairing session.</p>
+              </div>
+
+              {isScanning ? (
+                <Button disabled className="w-full max-w-xs mt-3 bg-primary/20 text-primary border border-primary/40 font-mono text-xs uppercase h-9">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin mr-2" />
+                  Establishing Session...
+                </Button>
+              ) : (
+                <div className="flex gap-2 w-full max-w-xs mt-3">
+                  <Button 
+                    variant="outline" 
+                    onClick={() => setQrCodeView(false)} 
+                    className="flex-1 font-mono text-[10px] uppercase h-9 border-border"
+                  >
+                    Back
+                  </Button>
+                  <Button 
+                    onClick={handleQrConnect} 
+                    className="flex-1 bg-primary hover:bg-primary/95 font-mono text-[10px] uppercase tracking-wider h-9"
+                  >
+                    Simulate Scan
+                  </Button>
+                </div>
+              )}
+            </div>
+          ) : activeTab === 'wallet' ? (
+            /* WALLET CONNECTION TAB */
+            <div className="space-y-4">
+              {walletAddress ? (
+                /* ALREADY CONNECTED PANEL */
+                <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-xl p-4 text-center space-y-3">
+                  <div className="mx-auto w-10 h-10 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-400">
+                    <Check className="w-5 h-5" />
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-sm font-semibold">Secure Connection Established</p>
+                    <p className="text-xs text-muted-foreground">You are authenticated via your wallet provider.</p>
+                  </div>
+                  <div className="flex items-center gap-2 bg-background border border-border/40 p-2.5 rounded-lg justify-between mt-2 max-w-xs mx-auto">
+                    <span className="text-xs font-mono font-bold uppercase truncate max-w-[180px]">
+                      {walletAddress}
+                    </span>
+                    <Button 
+                      variant="ghost" 
+                      size="icon-sm" 
+                      onClick={handleCopyAddress} 
+                      className="text-muted-foreground hover:text-foreground h-7 w-7"
+                    >
+                      {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                    </Button>
+                  </div>
+                  <Separator className="bg-border/30 my-2" />
+                  <div className="flex justify-center gap-3">
+                    <Button 
+                      variant="ghost" 
+                      onClick={handleDisconnect} 
+                      className="text-red-400 hover:text-red-500 hover:bg-red-500/5 font-mono text-[10px] uppercase h-8"
+                    >
+                      <LogOut className="w-3.5 h-3.5 mr-1.5" />
+                      Disconnect Wallet
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                /* CHOOSE WALLET CONNECTION */
+                <div className="space-y-4">
+                  {/* Select Blockchain */}
+                  <div>
+                    <label className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground font-mono block mb-2">
+                      1. Choose Target Network
+                    </label>
+                    <div className="grid grid-cols-4 gap-1.5">
+                      {BLOCKCHAINS.map((chain) => {
+                        const isSelected = selectedChain === chain.id;
+                        return (
+                          <button
+                            key={chain.id}
+                            onClick={() => setSelectedChain(chain.id)}
+                            className={`p-2.5 rounded-xl border text-center flex flex-col items-center justify-center gap-1 transition-all cursor-pointer ${
+                              isSelected
+                                ? 'bg-primary/10 border-primary text-foreground'
+                                : 'bg-background hover:bg-muted/10 border-border/60 text-muted-foreground'
+                            }`}
+                          >
+                            <span className="text-lg">{chain.icon}</span>
+                            <span className="text-[10px] font-mono font-bold uppercase tracking-tight">{chain.name}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Select Wallet App */}
+                  <div>
+                    <label className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground font-mono block mb-2">
+                      2. Choose Web3 Client
+                    </label>
+                    <div className="space-y-2">
+                      {WALLETS.map((wallet) => {
+                        const isSelected = selectedWallet === wallet.id;
+                        return (
+                          <button
+                            key={wallet.id}
+                            onClick={() => setSelectedWallet(wallet.id)}
+                            className={`w-full p-3 rounded-xl border text-left flex items-center justify-between transition-all cursor-pointer ${
+                              isSelected
+                                ? 'bg-primary/10 border-primary/80 text-foreground'
+                                : 'bg-background hover:bg-muted/10 border-border/50 text-muted-foreground'
+                            }`}
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-xs ${
+                                isSelected ? 'bg-primary/20 text-primary' : 'bg-muted text-muted-foreground'
+                              }`}>
+                                {wallet.name[0]}
+                              </div>
+                              <div className="flex flex-col">
+                                <span className="text-xs font-bold text-foreground font-sans flex items-center gap-1.5">
+                                  {wallet.name}
+                                  {wallet.isDefault && (
+                                    <Badge variant="outline" className="text-[8px] tracking-widest font-mono border-primary/20 bg-primary/5 text-primary">DEFAULT</Badge>
+                                  )}
+                                </span>
+                                <span className="text-[10px] text-muted-foreground">{wallet.description}</span>
+                              </div>
+                            </div>
+                            <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${
+                              isSelected ? 'border-primary bg-primary text-primary-foreground' : 'border-border'
+                            }`}>
+                              {isSelected && <span className="text-[9px] font-bold">✓</span>}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Connect Trigger Actions */}
+                  <div className="grid grid-cols-2 gap-2 pt-2">
+                    <Button 
+                      variant="outline"
+                      onClick={() => setQrCodeView(true)}
+                      className="border-border hover:bg-muted/10 font-mono text-[10px] uppercase h-10 tracking-wider flex items-center gap-1.5"
+                    >
+                      <QrCode className="w-4 h-4 text-primary" />
+                      Scan QR Code
+                    </Button>
+                    <Button
+                      disabled={isConnecting}
+                      onClick={handleWalletConnect}
+                      className="bg-primary hover:bg-primary/95 text-primary-foreground font-mono text-[10px] uppercase tracking-wider h-10 flex items-center justify-center"
+                    >
+                      {isConnecting ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin mr-1.5" />
+                          Signing...
+                        </>
+                      ) : (
+                        <>
+                          <Wallet className="w-4 h-4 mr-1.5" />
+                          Connect Phantom
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            /* PROFILE SETTINGS TAB */
+            <div className="space-y-4">
+              {/* Username Input */}
+              <div className="space-y-1.5">
+                <label className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground font-mono block">
+                  Username / Alias
+                </label>
+                <div className="relative">
+                  <User className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input 
+                    value={tempUsername}
+                    onChange={(e) => setTempUsername(e.target.value)}
+                    placeholder="E.g. Apex Trader"
+                    className="pl-9 h-10 border-border bg-background focus:ring-primary focus:border-primary"
+                  />
+                </div>
+              </div>
+
+              {/* Avatar Selector */}
+              <div className="space-y-2">
+                <label className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground font-mono block">
+                  Select Profile Avatar
+                </label>
+                
+                {/* Preset Row Grid */}
+                <div className="grid grid-cols-6 gap-2">
+                  {PRESET_AVATARS.map((p) => {
+                    const isSelected = customAvatarInput === p.url;
+                    return (
+                      <button
+                        key={p.name}
+                        onClick={() => setCustomAvatarInput(p.url)}
+                        title={p.name}
+                        className={`relative aspect-square rounded-xl overflow-hidden border-2 transition-all cursor-pointer ${
+                          isSelected ? 'border-primary ring-2 ring-primary/20 scale-105' : 'border-border hover:border-muted-foreground/40'
+                        }`}
+                      >
+                        <img src={p.url} alt={p.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                        {isSelected && (
+                          <div className="absolute inset-0 bg-primary/20 flex items-center justify-center text-white">
+                            <Check className="w-4 h-4" />
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Custom Image Input Options */}
+                <div className="flex flex-col sm:flex-row gap-2.5 mt-2.5">
+                  <div className="flex-1 space-y-1">
+                    <span className="text-[9px] text-muted-foreground uppercase font-mono block">Or Custom Image URL</span>
+                    <Input 
+                      value={customAvatarInput}
+                      onChange={(e) => setCustomAvatarInput(e.target.value)}
+                      placeholder="Paste image URL here..."
+                      className="h-8 text-xs border-border bg-background"
+                    />
+                  </div>
+                  <div className="flex flex-col justify-end">
+                    <label className="h-8 px-2.5 bg-muted hover:bg-muted/80 rounded-lg border border-border flex items-center gap-1 cursor-pointer text-[10px] font-mono uppercase font-semibold text-muted-foreground hover:text-foreground transition-all">
+                      <Upload className="w-3.5 h-3.5" />
+                      <span>Upload</span>
+                      <input 
+                        type="file" 
+                        accept="image/*" 
+                        onChange={handleFileUpload} 
+                        className="hidden" 
+                      />
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              {/* Connected wallet metadata summary if connected */}
+              {walletAddress && (
+                <div className="bg-muted/30 border border-border/40 rounded-xl p-3 flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-2 bg-primary/5 border border-primary/10 rounded-lg text-primary">
+                      <Wallet className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <span className="text-[10px] font-mono text-muted-foreground block uppercase leading-none">Paired Wallet</span>
+                      <span className="text-xs font-semibold font-sans mt-1">{walletType} ({connectedBlockchain})</span>
+                    </div>
+                  </div>
+                  <Badge className="bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 text-[9px] font-mono">
+                    ONLINE
+                  </Badge>
+                </div>
+              )}
+
+              {/* Save Trigger Actions */}
+              <div className="flex justify-between items-center pt-2">
+                {walletAddress ? (
+                  <Button 
+                    variant="ghost" 
+                    onClick={handleDisconnect} 
+                    className="text-red-400 hover:text-red-500 hover:bg-red-500/5 font-mono text-[10px] uppercase h-10 px-3 cursor-pointer"
+                  >
+                    Disconnect
+                  </Button>
+                ) : (
+                  <div></div>
+                )}
+                <div className="flex gap-2">
+                  <DialogClose render={<Button variant="outline" className="border-border font-mono text-[10px] uppercase h-10" />}>
+                    Cancel
+                  </DialogClose>
+                  <Button 
+                    onClick={handleSaveProfile} 
+                    className="bg-primary hover:bg-primary/95 text-primary-foreground font-mono text-[10px] uppercase tracking-wider h-10 px-4 cursor-pointer"
+                  >
+                    Save & Close
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
