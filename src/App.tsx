@@ -134,6 +134,7 @@ export default function App() {
   });
 
   const [isSubscriptionModalOpen, setIsSubscriptionModalOpen] = useState(false);
+  const [selectedBillingCycle, setSelectedBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
   const [subscriptionTriggerReason, setSubscriptionTriggerReason] = useState<'search' | 'chat' | 'upgrade'>('upgrade');
 
   // Smart Contract Checkout States
@@ -911,7 +912,14 @@ Can you perform an advanced confirmation analyze of this recommendation using co
                   }}
                 />
               ) : (
-                <Snapshots onAnalyze={handleAnalyzeSnapshot} />
+                <Snapshots 
+                  onAnalyze={handleAnalyzeSnapshot} 
+                  onTriggerUpgrade={() => {
+                    setSubscriptionTriggerReason('upgrade');
+                    setIsSubscriptionModalOpen(true);
+                  }}
+                  userTier={userTier}
+                />
               )}
             </div>
           </ScrollArea>
@@ -1168,6 +1176,33 @@ What are the critical price milestones and exact validation triggers we should m
                     </div>
                   </div>
 
+                  {/* Billing Cycle Toggle */}
+                  <div className="flex justify-center items-center gap-3 bg-muted/20 p-1.5 rounded-xl border border-border/40 max-w-[280px] mx-auto">
+                    <button
+                      onClick={() => setSelectedBillingCycle('monthly')}
+                      className={`px-4 py-1.5 rounded-lg text-xs font-mono uppercase font-bold tracking-wider cursor-pointer transition-all ${
+                        selectedBillingCycle === 'monthly'
+                          ? 'bg-primary text-primary-foreground shadow-sm'
+                          : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      Monthly
+                    </button>
+                    <button
+                      onClick={() => setSelectedBillingCycle('yearly')}
+                      className={`px-4 py-1.5 rounded-lg text-xs font-mono uppercase font-bold tracking-wider cursor-pointer transition-all flex items-center gap-1.5 ${
+                        selectedBillingCycle === 'yearly'
+                          ? 'bg-amber-500 text-black shadow-sm'
+                          : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      Yearly
+                      <span className="bg-emerald-500 text-black text-[8px] font-sans font-extrabold px-1.5 py-0.5 rounded-full uppercase leading-none">
+                        Save 20%
+                      </span>
+                    </button>
+                  </div>
+
                   {/* Three Tiers Side-by-Side */}
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-2">
                     {/* Basic Plan */}
@@ -1177,7 +1212,14 @@ What are the critical price milestones and exact validation triggers we should m
                       <div className="space-y-4">
                         <div className="space-y-1.5">
                           <span className="text-[10px] uppercase font-mono tracking-wider text-primary font-bold">Basic Tier</span>
-                          <h4 className="text-2xl font-bold font-mono text-foreground">$5<span className="text-xs font-sans text-muted-foreground">/mo</span></h4>
+                          {selectedBillingCycle === 'yearly' ? (
+                            <div>
+                              <h4 className="text-2xl font-bold font-mono text-foreground">$48<span className="text-xs font-sans text-muted-foreground">/yr</span></h4>
+                              <p className="text-[10px] text-muted-foreground mt-0.5 font-mono">Equivalent to $4.00/mo</p>
+                            </div>
+                          ) : (
+                            <h4 className="text-2xl font-bold font-mono text-foreground">$5<span className="text-xs font-sans text-muted-foreground">/mo</span></h4>
+                          )}
                         </div>
                         <ul className="space-y-3 font-sans text-xs text-muted-foreground border-t border-border/40 pt-4">
                           <li className="flex items-center gap-2">
@@ -1215,7 +1257,14 @@ What are the critical price milestones and exact validation triggers we should m
                       <div className="space-y-4">
                         <div className="space-y-1.5 mt-2">
                           <span className="text-[10px] uppercase font-mono tracking-wider text-amber-500 font-bold">Pro Tier</span>
-                          <h4 className="text-2xl font-bold font-mono text-foreground">$15<span className="text-xs font-sans text-muted-foreground">/mo</span></h4>
+                          {selectedBillingCycle === 'yearly' ? (
+                            <div>
+                              <h4 className="text-2xl font-bold font-mono text-foreground">$144<span className="text-xs font-sans text-muted-foreground">/yr</span></h4>
+                              <p className="text-[10px] text-muted-foreground mt-0.5 font-mono">Equivalent to $12.00/mo</p>
+                            </div>
+                          ) : (
+                            <h4 className="text-2xl font-bold font-mono text-foreground">$15<span className="text-xs font-sans text-muted-foreground">/mo</span></h4>
+                          )}
                         </div>
                         <ul className="space-y-3 font-sans text-xs text-muted-foreground border-t border-border/40 pt-4">
                           <li className="flex items-center gap-2">
@@ -1247,7 +1296,14 @@ What are the critical price milestones and exact validation triggers we should m
                       <div className="space-y-4">
                         <div className="space-y-1.5">
                           <span className="text-[10px] uppercase font-mono tracking-wider text-primary font-bold">Ultimate Tier</span>
-                          <h4 className="text-2xl font-bold font-mono text-foreground">$29<span className="text-xs font-sans text-muted-foreground">/mo</span></h4>
+                          {selectedBillingCycle === 'yearly' ? (
+                            <div>
+                              <h4 className="text-2xl font-bold font-mono text-foreground">$276<span className="text-xs font-sans text-muted-foreground">/yr</span></h4>
+                              <p className="text-[10px] text-muted-foreground mt-0.5 font-mono">Equivalent to $23.00/mo</p>
+                            </div>
+                          ) : (
+                            <h4 className="text-2xl font-bold font-mono text-foreground">$29<span className="text-xs font-sans text-muted-foreground">/mo</span></h4>
+                          )}
                         </div>
                         <ul className="space-y-3 font-sans text-xs text-muted-foreground border-t border-border/40 pt-4">
                           <li className="flex items-center gap-2">
@@ -1295,8 +1351,9 @@ What are the critical price milestones and exact validation triggers we should m
               onClose={() => setSmartContractPaymentTier(null)}
               tier={smartContractPaymentTier}
               price={
-                smartContractPaymentTier === 'basic' ? 5 :
-                smartContractPaymentTier === 'pro' ? 15 : 29
+                smartContractPaymentTier === 'basic' ? (selectedBillingCycle === 'yearly' ? 48 : 5) :
+                smartContractPaymentTier === 'pro' ? (selectedBillingCycle === 'yearly' ? 144 : 15) : 
+                (selectedBillingCycle === 'yearly' ? 276 : 29)
               }
               walletAddress={walletAddress}
               onConnectWallet={() => {
@@ -1308,9 +1365,20 @@ What are the critical price milestones and exact validation triggers we should m
                 setUsdcBalance(newBal);
                 localStorage.setItem('swarm_wallet_usdc', newBal.toString());
               }}
+              solBalance={solBalance}
+              setSolBalance={(newBal) => {
+                setSolBalance(newBal);
+                localStorage.setItem('swarm_wallet_sol', newBal.toString());
+              }}
               onSuccess={() => {
                 setUserTier(smartContractPaymentTier);
                 localStorage.setItem('swarm_user_tier', smartContractPaymentTier);
+                
+                // Calculate and store membership expiration
+                const daysToAdd = selectedBillingCycle === 'yearly' ? 365 : 30;
+                const newExpiry = Date.now() + daysToAdd * 24 * 60 * 60 * 1000;
+                localStorage.setItem('swarm_membership_expiry', newExpiry.toString());
+                
                 setSmartContractPaymentTier(null);
                 setIsSubscriptionModalOpen(false);
               }}

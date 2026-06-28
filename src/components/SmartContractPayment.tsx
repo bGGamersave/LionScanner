@@ -26,6 +26,8 @@ interface SmartContractPaymentProps {
   onConnectWallet: () => void;
   usdcBalance: number;
   setUsdcBalance: (b: number) => void;
+  solBalance: number;
+  setSolBalance: (b: number) => void;
   onSuccess: () => void;
 }
 
@@ -38,9 +40,11 @@ export default function SmartContractPayment({
   onConnectWallet,
   usdcBalance,
   setUsdcBalance,
+  solBalance,
+  setSolBalance,
   onSuccess
 }: SmartContractPaymentProps) {
-  const [paymentAsset, setPaymentAsset] = useState<'USDC' | 'USDT'>('USDC');
+  const [paymentAsset, setPaymentAsset] = useState<'USDC' | 'USDT' | 'SOL' | 'ETH' | 'BTC' | 'DOGE'>('USDC');
   const [isAuthorizing, setIsAuthorizing] = useState(false);
   const [authStep, setAuthStep] = useState<number>(0);
   const [txSignature, setTxSignature] = useState<string | null>(null);
@@ -86,9 +90,18 @@ export default function SmartContractPayment({
 
   const executeSmartContractPayment = () => {
     if (!walletAddress) return;
-    if (usdcBalance < price) {
-      alert(`Insufficient ${paymentAsset} balance in connected wallet. You need at least $${price} ${paymentAsset} to complete the transaction.`);
-      return;
+
+    if (paymentAsset === 'USDC' || paymentAsset === 'USDT') {
+      if (usdcBalance < price) {
+        alert(`Insufficient ${paymentAsset} balance in connected wallet. You need at least $${price} ${paymentAsset} to complete the transaction.`);
+        return;
+      }
+    } else if (paymentAsset === 'SOL') {
+      const solRequired = parseFloat(equivalentRates.SOL);
+      if (solBalance < solRequired) {
+        alert(`Insufficient SOL balance in connected wallet. You need at least ${solRequired} SOL to complete the transaction.`);
+        return;
+      }
     }
 
     setIsAuthorizing(true);
@@ -106,7 +119,15 @@ export default function SmartContractPayment({
         const mockSig = 'sol_tx_' + Array.from({ length: 44 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
         
         setTxSignature(mockSig);
-        setUsdcBalance(Number((usdcBalance - price).toFixed(2)));
+        
+        // Deduct balance of selected asset
+        if (paymentAsset === 'USDC' || paymentAsset === 'USDT') {
+          setUsdcBalance(Number((usdcBalance - price).toFixed(2)));
+        } else if (paymentAsset === 'SOL') {
+          const solRequired = parseFloat(equivalentRates.SOL);
+          setSolBalance(Number((solBalance - solRequired).toFixed(4)));
+        }
+        
         setIsAuthorizing(false);
         setAuthStep(-1); // -1 marks success
         
@@ -256,10 +277,13 @@ export default function SmartContractPayment({
                       </span>
                     </div>
                   </div>
-                  <div className="text-right">
+                  <div className="text-right flex flex-col items-end">
                     <span className="text-[10px] text-muted-foreground font-mono block uppercase">Your Balance</span>
                     <span className="text-xs font-mono font-bold text-emerald-400">
                       {usdcBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })} USDC
+                    </span>
+                    <span className="text-[10px] font-mono text-muted-foreground">
+                      {solBalance.toFixed(3)} SOL
                     </span>
                   </div>
                 </div>
@@ -308,49 +332,143 @@ export default function SmartContractPayment({
               {/* Payment Asset selector */}
               <div className="space-y-2">
                 <span className="text-[10px] text-muted-foreground font-mono uppercase tracking-wider block">Select Payment Asset</span>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  {/* USDC */}
                   <button
                     onClick={() => setPaymentAsset('USDC')}
-                    className={`p-3 rounded-xl border text-left flex items-center justify-between transition-all cursor-pointer ${
+                    className={`p-3 rounded-xl border text-left flex flex-col justify-between h-[85px] transition-all cursor-pointer ${
                       paymentAsset === 'USDC'
                         ? 'bg-primary/10 border-primary text-foreground'
                         : 'bg-background hover:bg-muted/10 border-border/60 text-muted-foreground'
                     }`}
                   >
-                    <div className="flex items-center gap-2">
-                      <div className="w-6 h-6 rounded bg-emerald-500/10 flex items-center justify-center text-emerald-400 font-bold text-xs">
+                    <div className="flex justify-between items-start w-full">
+                      <div className="w-6 h-6 rounded bg-blue-500/10 flex items-center justify-center text-blue-400 font-bold text-xs">
                         $
                       </div>
-                      <div className="flex flex-col">
-                        <span className="text-xs font-bold font-mono">USDC (Solana)</span>
-                        <span className="text-[10px] text-muted-foreground">Stablecoin Settlement</span>
-                      </div>
+                      <div className={`w-2.5 h-2.5 rounded-full border ${
+                        paymentAsset === 'USDC' ? 'bg-primary border-primary' : 'border-border'
+                      }`}></div>
                     </div>
-                    <div className={`w-3 h-3 rounded-full border ${
-                      paymentAsset === 'USDC' ? 'bg-primary border-primary' : 'border-border'
-                    }`}></div>
+                    <div className="flex flex-col mt-2">
+                      <span className="text-xs font-bold font-mono leading-none">USDC</span>
+                      <span className="text-[9px] text-muted-foreground mt-0.5">Stablecoin</span>
+                    </div>
                   </button>
 
+                  {/* USDT */}
                   <button
                     onClick={() => setPaymentAsset('USDT')}
-                    className={`p-3 rounded-xl border text-left flex items-center justify-between transition-all cursor-pointer ${
+                    className={`p-3 rounded-xl border text-left flex flex-col justify-between h-[85px] transition-all cursor-pointer ${
                       paymentAsset === 'USDT'
                         ? 'bg-primary/10 border-primary text-foreground'
                         : 'bg-background hover:bg-muted/10 border-border/60 text-muted-foreground'
                     }`}
                   >
-                    <div className="flex items-center gap-2">
+                    <div className="flex justify-between items-start w-full">
                       <div className="w-6 h-6 rounded bg-emerald-500/10 flex items-center justify-center text-emerald-400 font-bold text-xs">
                         ₮
                       </div>
-                      <div className="flex flex-col">
-                        <span className="text-xs font-bold font-mono">USDT (Solana)</span>
-                        <span className="text-[10px] text-muted-foreground">Tether Settlement</span>
-                      </div>
+                      <div className={`w-2.5 h-2.5 rounded-full border ${
+                        paymentAsset === 'USDT' ? 'bg-primary border-primary' : 'border-border'
+                      }`}></div>
                     </div>
-                    <div className={`w-3 h-3 rounded-full border ${
-                      paymentAsset === 'USDT' ? 'bg-primary border-primary' : 'border-border'
-                    }`}></div>
+                    <div className="flex flex-col mt-2">
+                      <span className="text-xs font-bold font-mono leading-none">USDT</span>
+                      <span className="text-[9px] text-muted-foreground mt-0.5">Tether</span>
+                    </div>
+                  </button>
+
+                  {/* SOL */}
+                  <button
+                    onClick={() => setPaymentAsset('SOL')}
+                    className={`p-3 rounded-xl border text-left flex flex-col justify-between h-[85px] transition-all cursor-pointer ${
+                      paymentAsset === 'SOL'
+                        ? 'bg-primary/10 border-primary text-foreground'
+                        : 'bg-background hover:bg-muted/10 border-border/60 text-muted-foreground'
+                    }`}
+                  >
+                    <div className="flex justify-between items-start w-full">
+                      <div className="w-6 h-6 rounded bg-purple-500/10 flex items-center justify-center text-purple-400 font-bold text-xs">
+                        ◎
+                      </div>
+                      <div className={`w-2.5 h-2.5 rounded-full border ${
+                        paymentAsset === 'SOL' ? 'bg-primary border-primary' : 'border-border'
+                      }`}></div>
+                    </div>
+                    <div className="flex flex-col mt-2">
+                      <span className="text-xs font-bold font-mono leading-none">SOL</span>
+                      <span className="text-[9px] text-muted-foreground mt-0.5">{equivalentRates.SOL} SOL</span>
+                    </div>
+                  </button>
+
+                  {/* ETH */}
+                  <button
+                    onClick={() => setPaymentAsset('ETH')}
+                    className={`p-3 rounded-xl border text-left flex flex-col justify-between h-[85px] transition-all cursor-pointer ${
+                      paymentAsset === 'ETH'
+                        ? 'bg-primary/10 border-primary text-foreground'
+                        : 'bg-background hover:bg-muted/10 border-border/60 text-muted-foreground'
+                    }`}
+                  >
+                    <div className="flex justify-between items-start w-full">
+                      <div className="w-6 h-6 rounded bg-indigo-500/10 flex items-center justify-center text-indigo-400 font-bold text-xs">
+                        Ξ
+                      </div>
+                      <div className={`w-2.5 h-2.5 rounded-full border ${
+                        paymentAsset === 'ETH' ? 'bg-primary border-primary' : 'border-border'
+                      }`}></div>
+                    </div>
+                    <div className="flex flex-col mt-2">
+                      <span className="text-xs font-bold font-mono leading-none">ETH</span>
+                      <span className="text-[9px] text-muted-foreground mt-0.5">{equivalentRates.ETH} ETH</span>
+                    </div>
+                  </button>
+
+                  {/* BTC */}
+                  <button
+                    onClick={() => setPaymentAsset('BTC')}
+                    className={`p-3 rounded-xl border text-left flex flex-col justify-between h-[85px] transition-all cursor-pointer ${
+                      paymentAsset === 'BTC'
+                        ? 'bg-primary/10 border-primary text-foreground'
+                        : 'bg-background hover:bg-muted/10 border-border/60 text-muted-foreground'
+                    }`}
+                  >
+                    <div className="flex justify-between items-start w-full">
+                      <div className="w-6 h-6 rounded bg-yellow-500/10 flex items-center justify-center text-yellow-500 font-bold text-xs">
+                        ₿
+                      </div>
+                      <div className={`w-2.5 h-2.5 rounded-full border ${
+                        paymentAsset === 'BTC' ? 'bg-primary border-primary' : 'border-border'
+                      }`}></div>
+                    </div>
+                    <div className="flex flex-col mt-2">
+                      <span className="text-xs font-bold font-mono leading-none">BTC</span>
+                      <span className="text-[9px] text-muted-foreground mt-0.5">{equivalentRates.BTC} BTC</span>
+                    </div>
+                  </button>
+
+                  {/* DOGE */}
+                  <button
+                    onClick={() => setPaymentAsset('DOGE')}
+                    className={`p-3 rounded-xl border text-left flex flex-col justify-between h-[85px] transition-all cursor-pointer ${
+                      paymentAsset === 'DOGE'
+                        ? 'bg-primary/10 border-primary text-foreground'
+                        : 'bg-background hover:bg-muted/10 border-border/60 text-muted-foreground'
+                    }`}
+                  >
+                    <div className="flex justify-between items-start w-full">
+                      <div className="w-6 h-6 rounded bg-amber-500/10 flex items-center justify-center text-amber-500 font-bold text-xs">
+                        Ð
+                      </div>
+                      <div className={`w-2.5 h-2.5 rounded-full border ${
+                        paymentAsset === 'DOGE' ? 'bg-primary border-primary' : 'border-border'
+                      }`}></div>
+                    </div>
+                    <div className="flex flex-col mt-2">
+                      <span className="text-xs font-bold font-mono leading-none">DOGE</span>
+                      <span className="text-[9px] text-muted-foreground mt-0.5">{equivalentRates.DOGE} DOGE</span>
+                    </div>
                   </button>
                 </div>
               </div>

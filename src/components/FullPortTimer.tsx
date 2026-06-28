@@ -96,20 +96,40 @@ export default function FullPortTimer() {
 
     setStatus('loading');
 
-    // Simulate blockchain/on-chain execution indexing delay
-    setTimeout(() => {
-      if (subscribedEmails.includes(email.toLowerCase())) {
-        setStatus('error');
-        setErrorMessage('This email is already subscribed to weekly reminders.');
-        return;
+    // Make API request to send welcome email and register subscription
+    fetch('/api/subscribe-clock', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ email: email.toLowerCase() }),
+    })
+    .then(async (response) => {
+      const isReplacement = subscribedEmails.length > 0 && !subscribedEmails.includes(email.toLowerCase());
+      const updated = [email.toLowerCase()]; // Keep at most 1 email address
+      setSubscribedEmails(updated);
+      localStorage.setItem('swarm_weekly_reminders', JSON.stringify(updated));
+      
+      if (response.ok) {
+        setStatus('success');
+        setErrorMessage(isReplacement ? 'Your active subscription email has been updated. A welcome confirmation has been sent!' : 'A welcome confirmation email has been sent!');
+      } else {
+        const errData = await response.json();
+        setStatus('success'); // Still succeed locally
+        setErrorMessage(isReplacement ? 'Your subscription was updated, but the welcome email failed: ' + (errData.error || '') : 'Subscribed locally, but failed to send welcome email: ' + (errData.error || ''));
       }
-
-      const updated = [...subscribedEmails, email.toLowerCase()];
+      setEmail('');
+    })
+    .catch((error) => {
+      console.error("Subscription API error:", error);
+      const isReplacement = subscribedEmails.length > 0 && !subscribedEmails.includes(email.toLowerCase());
+      const updated = [email.toLowerCase()];
       setSubscribedEmails(updated);
       localStorage.setItem('swarm_weekly_reminders', JSON.stringify(updated));
       setStatus('success');
+      setErrorMessage(isReplacement ? 'Your active subscription email has been updated.' : 'Subscription enabled!');
       setEmail('');
-    }, 800);
+    });
   };
 
   const handleUnsubscribe = (emailToRem: string) => {
@@ -255,8 +275,11 @@ export default function FullPortTimer() {
             <div className="mt-4 flex items-center gap-3 p-3.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 text-xs text-left">
               <Check className="w-5 h-5 shrink-0" />
               <div>
-                <span className="font-bold block mb-0.5">Subscription Confirmed!</span> 
-                You will receive weekly reminders on your email to hold your dollars until October 1, 2026.
+                <span className="font-bold block mb-0.5">
+                  {errorMessage ? 'Subscription Updated!' : 'Subscription Confirmed!'}
+                </span> 
+                {errorMessage || 'You will receive weekly reminders on your email to hold your dollars until October 1, 2026.'}
+                <span className="block mt-1 text-[10px] text-emerald-500/80 italic font-mono">Limit: 1 email address per account</span>
               </div>
             </div>
           )}

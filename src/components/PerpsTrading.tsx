@@ -573,8 +573,8 @@ export default function PerpsTrading({
               </div>
               <div className="h-8 w-px bg-border/40 mx-1"></div>
               <div className="font-mono text-right text-xs">
-                <span className="text-primary font-bold block leading-none text-[9px]">COLLATERAL</span>
-                <span>{usdcBalance.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}</span>
+                <span className="text-primary font-bold block leading-none text-[9px]">WALLET BALANCE</span>
+                <span>{(usdcBalance + (solBalance * 138.5)).toLocaleString('en-US', { style: 'currency', currency: 'USD' })}</span>
               </div>
               <Button 
                 variant="ghost" 
@@ -972,7 +972,7 @@ Can you evaluate this perpetual setup? What are the immediate support and resist
               </div>
               {walletAddress && positionsTab === 'active' && (
                 <div className="text-right text-[10px] font-mono text-muted-foreground bg-background/55 border border-border/40 px-2 py-1 rounded">
-                  Phantom Net Assets: <span className="text-emerald-500 font-bold font-mono">{formatCurrency(usdcBalance + positions.reduce((acc, c) => acc + c.margin + c.pnl, 200))}</span>
+                  Phantom Wallet Balance: <span className="text-emerald-500 font-bold font-mono">{formatCurrency(usdcBalance + (solBalance * 138.5))}</span>
                 </div>
               )}
             </CardHeader>
