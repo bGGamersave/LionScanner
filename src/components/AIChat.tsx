@@ -169,12 +169,17 @@ export default function AIChat({
         })
       });
 
-      if (!response.ok) {
-        const errData = await response.json();
-        throw new Error(errData.error || "Server failed to respond");
+      const responseTextRaw = await response.text();
+      let responseData: any;
+      try {
+        responseData = JSON.parse(responseTextRaw);
+      } catch (parseErr) {
+        throw new Error(`Server returned non-JSON response (status ${response.status}): ${responseTextRaw.substring(0, 300)}`);
       }
 
-      const responseData = await response.json();
+      if (!response.ok) {
+        throw new Error(responseData.error || "Server failed to respond");
+      }
       
       if (responseData.history) {
         chatHistoryRef.current = responseData.history;
