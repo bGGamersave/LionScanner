@@ -73,6 +73,20 @@ export default function App() {
   const [liveHigh, setLiveHigh] = useState<number | string>('64,850.00');
   const [liveLow, setLiveLow] = useState<number | string>('63,200.00');
 
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const checkDevice = () => {
+      const uAgent = navigator.userAgent || navigator.vendor || (window as any).opera;
+      const isMobileUA = /android|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(uAgent.toLowerCase());
+      const isSmallScreen = window.innerWidth < 768;
+      setIsMobile(isMobileUA || isSmallScreen);
+    };
+    checkDevice();
+    window.addEventListener('resize', checkDevice);
+    return () => window.removeEventListener('resize', checkDevice);
+  }, []);
+
   useEffect(() => {
     const fetchQuote = async () => {
       const matched = SEARCHABLE_MARKETS.find(m => m.symbol === activeSymbol);
@@ -358,6 +372,9 @@ export default function App() {
               
               {activeTab === 'dashboard' ? (
                 <>
+                  {/* Full Port back into Crypto Countdown Timer */}
+                  <FullPortTimer />
+
                   {/* Timeframe Selector Tabs */}
                   <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-card border border-border/80 backdrop-blur rounded-xl p-4 shadow-sm">
                     <div className="space-y-1 border-l-2 border-orange-500/80 pl-3.5 py-0.5" id="swarm-strategy-room-header">
@@ -396,9 +413,6 @@ export default function App() {
                       })}
                     </div>
                   </div>
-
-                  {/* Full Port back into Crypto Countdown Timer */}
-                  <FullPortTimer />
 
                   {/* Top Stats Row */}
                   <div className="grid grid-cols-1 tracking-tight md:grid-cols-3 gap-4">
@@ -802,6 +816,8 @@ Can you perform an advanced confirmation analyze of this recommendation using co
             setConnectedBlockchain={setConnectedBlockchain}
             walletType={walletType}
             setWalletType={setWalletType}
+            setUsdcBalance={setUsdcBalance}
+            setSolBalance={setSolBalance}
           />
         </div>
       </main>

@@ -30,6 +30,20 @@ export default function FullPortTimer() {
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState('');
 
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const checkDevice = () => {
+      const uAgent = navigator.userAgent || navigator.vendor || (window as any).opera;
+      const isMobileUA = /android|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(uAgent.toLowerCase());
+      const isSmallScreen = window.innerWidth < 768;
+      setIsMobile(isMobileUA || isSmallScreen);
+    };
+    checkDevice();
+    window.addEventListener('resize', checkDevice);
+    return () => window.removeEventListener('resize', checkDevice);
+  }, []);
+
   // Calculate remaining time
   useEffect(() => {
     const calculateTime = () => {
@@ -116,88 +130,86 @@ export default function FullPortTimer() {
           Bear Market Bottom Countdown Clock
         </div>
         <CardTitle 
-          className="font-bold font-mono text-foreground uppercase tracking-wider leading-tight text-center mx-auto"
+          className="font-bold font-mono text-foreground uppercase tracking-wider leading-tight text-center mx-auto text-lg sm:text-2xl md:text-3xl lg:text-[34px]"
           style={{
-            width: '500px',
             maxWidth: '100%',
-            fontSize: '34px',
             lineHeight: '1.2'
           }}
         >
           The exact time until we go full port back into crypto
         </CardTitle>
-        <CardDescription className="text-xs text-muted-foreground/80 font-sans mt-1 text-center mx-auto">
+        <CardDescription className="text-[10px] sm:text-xs text-muted-foreground/80 font-sans mt-1 text-center mx-auto">
           Target Execution Block Date: <span className="font-mono font-semibold text-foreground/90">October 1, 2026 (00:00:00 Local)</span>
         </CardDescription>
       </CardHeader>
 
       <CardContent className="w-full p-0 flex flex-col items-center">
         {/* Digital Clock Display - SPREAD OUT AND GLOWING */}
-        <div className="flex items-center justify-center gap-2.5 sm:gap-6 md:gap-10 lg:gap-14 my-8 py-4 w-full select-none overflow-x-auto px-2">
+        <div className="flex items-center justify-center gap-1 sm:gap-4 md:gap-8 lg:gap-12 my-4 sm:my-8 py-2 sm:py-4 w-full select-none overflow-x-auto px-1 sm:px-2">
           {/* Days */}
           <div className="flex flex-col items-center">
-            <div className="flex gap-1.5 sm:gap-2">
+            <div className="flex gap-1 sm:gap-2">
               {timeLeft.days.split('').map((char, idx) => (
                 <div 
                   key={`day-${idx}`} 
-                  className="w-10 h-16 sm:w-16 sm:h-22 bg-background border border-border/80 rounded-xl flex items-center justify-center font-mono text-2xl sm:text-5xl font-black text-orange-500 shadow-inner shadow-black/60 drop-shadow-[0_0_10px_rgba(249,115,22,0.7)] hover:scale-105 transition-transform duration-200"
+                  className="w-7 h-11 sm:w-16 sm:h-22 bg-background border border-border/80 rounded-lg sm:rounded-xl flex items-center justify-center font-mono text-lg sm:text-5xl font-black text-orange-500 shadow-inner shadow-black/60 drop-shadow-[0_0_10px_rgba(249,115,22,0.7)] hover:scale-105 transition-transform duration-200"
                 >
                   {char}
                 </div>
               ))}
             </div>
-            <span className="text-[9px] sm:text-[10px] font-mono tracking-[0.25em] text-orange-500/80 uppercase mt-3.5 font-black">Days</span>
+            <span className="text-[8px] sm:text-[10px] font-mono tracking-[0.25em] text-orange-500/80 uppercase mt-2 sm:mt-3.5 font-black">Days</span>
           </div>
 
-          <div className="text-orange-500/70 text-xl sm:text-4xl font-black font-mono self-center mb-8 animate-pulse shadow-orange-500/30 drop-shadow-[0_0_8px_rgba(249,115,22,0.5)]">:</div>
+          <div className="text-orange-500/70 text-base sm:text-4xl font-black font-mono self-center mb-3 sm:mb-8 animate-pulse shadow-orange-500/30 drop-shadow-[0_0_8px_rgba(249,115,22,0.5)]">:</div>
 
           {/* Hours */}
           <div className="flex flex-col items-center">
-            <div className="flex gap-1.5 sm:gap-2">
+            <div className="flex gap-1 sm:gap-2">
               {timeLeft.hours.split('').map((char, idx) => (
                 <div 
                   key={`hour-${idx}`} 
-                  className="w-10 h-16 sm:w-16 sm:h-22 bg-background border border-border/80 rounded-xl flex items-center justify-center font-mono text-2xl sm:text-5xl font-black text-orange-500 shadow-inner shadow-black/60 drop-shadow-[0_0_10px_rgba(249,115,22,0.7)] hover:scale-105 transition-transform duration-200"
+                  className="w-7 h-11 sm:w-16 sm:h-22 bg-background border border-border/80 rounded-lg sm:rounded-xl flex items-center justify-center font-mono text-lg sm:text-5xl font-black text-orange-500 shadow-inner shadow-black/60 drop-shadow-[0_0_10px_rgba(249,115,22,0.7)] hover:scale-105 transition-transform duration-200"
                 >
                   {char}
                 </div>
               ))}
             </div>
-            <span className="text-[9px] sm:text-[10px] font-mono tracking-[0.25em] text-orange-500/80 uppercase mt-3.5 font-black">Hours</span>
+            <span className="text-[8px] sm:text-[10px] font-mono tracking-[0.25em] text-orange-500/80 uppercase mt-2 sm:mt-3.5 font-black">Hours</span>
           </div>
 
-          <div className="text-orange-500/70 text-xl sm:text-4xl font-black font-mono self-center mb-8 animate-pulse shadow-orange-500/30 drop-shadow-[0_0_8px_rgba(249,115,22,0.5)]">:</div>
+          <div className="text-orange-500/70 text-base sm:text-4xl font-black font-mono self-center mb-3 sm:mb-8 animate-pulse shadow-orange-500/30 drop-shadow-[0_0_8px_rgba(249,115,22,0.5)]">:</div>
 
           {/* Minutes */}
           <div className="flex flex-col items-center">
-            <div className="flex gap-1.5 sm:gap-2">
+            <div className="flex gap-1 sm:gap-2">
               {timeLeft.minutes.split('').map((char, idx) => (
                 <div 
                   key={`min-${idx}`} 
-                  className="w-10 h-16 sm:w-16 sm:h-22 bg-background border border-border/80 rounded-xl flex items-center justify-center font-mono text-2xl sm:text-5xl font-black text-orange-500 shadow-inner shadow-black/60 drop-shadow-[0_0_10px_rgba(249,115,22,0.7)] hover:scale-105 transition-transform duration-200"
+                  className="w-7 h-11 sm:w-16 sm:h-22 bg-background border border-border/80 rounded-lg sm:rounded-xl flex items-center justify-center font-mono text-lg sm:text-5xl font-black text-orange-500 shadow-inner shadow-black/60 drop-shadow-[0_0_10px_rgba(249,115,22,0.7)] hover:scale-105 transition-transform duration-200"
                 >
                   {char}
                 </div>
               ))}
             </div>
-            <span className="text-[9px] sm:text-[10px] font-mono tracking-[0.25em] text-orange-500/80 uppercase mt-3.5 font-black">Minutes</span>
+            <span className="text-[8px] sm:text-[10px] font-mono tracking-[0.25em] text-orange-500/80 uppercase mt-2 sm:mt-3.5 font-black">Minutes</span>
           </div>
 
-          <div className="text-orange-500/70 text-xl sm:text-4xl font-black font-mono self-center mb-8 animate-pulse shadow-orange-500/30 drop-shadow-[0_0_8px_rgba(249,115,22,0.5)]">:</div>
+          <div className="text-orange-500/70 text-base sm:text-4xl font-black font-mono self-center mb-3 sm:mb-8 animate-pulse shadow-orange-500/30 drop-shadow-[0_0_8px_rgba(249,115,22,0.5)]">:</div>
 
           {/* Seconds */}
           <div className="flex flex-col items-center">
-            <div className="flex gap-1.5 sm:gap-2">
+            <div className="flex gap-1 sm:gap-2">
               {timeLeft.seconds.split('').map((char, idx) => (
                 <div 
                   key={`sec-${idx}`} 
-                  className="w-10 h-16 sm:w-16 sm:h-22 bg-background border border-border/80 rounded-xl flex items-center justify-center font-mono text-2xl sm:text-5xl font-black text-orange-500 shadow-inner shadow-black/60 drop-shadow-[0_0_10px_rgba(249,115,22,0.7)] hover:scale-105 transition-transform duration-200"
+                  className="w-7 h-11 sm:w-16 sm:h-22 bg-background border border-border/80 rounded-lg sm:rounded-xl flex items-center justify-center font-mono text-lg sm:text-5xl font-black text-orange-500 shadow-inner shadow-black/60 drop-shadow-[0_0_10px_rgba(249,115,22,0.7)] hover:scale-105 transition-transform duration-200"
                 >
                   {char}
                 </div>
               ))}
             </div>
-            <span className="text-[9px] sm:text-[10px] font-mono tracking-[0.25em] text-orange-500/80 uppercase mt-3.5 font-black">Seconds</span>
+            <span className="text-[8px] sm:text-[10px] font-mono tracking-[0.25em] text-orange-500/80 uppercase mt-2 sm:mt-3.5 font-black">Seconds</span>
           </div>
         </div>
 
