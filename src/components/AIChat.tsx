@@ -39,7 +39,11 @@ export default function AIChat({
   onClose,
   initialPrompt,
   onClearInitialPrompt,
-  onSelectSymbol
+  onSelectSymbol,
+  userTier = 'free',
+  dailyChatCount = 0,
+  onIncrementChatCount,
+  onTriggerUpgrade
 }: { 
   selectedSnapshot?: SnapshotData | null; 
   onClearSnapshot: () => void; 
@@ -47,6 +51,10 @@ export default function AIChat({
   initialPrompt?: string | null;
   onClearInitialPrompt?: () => void;
   onSelectSymbol?: (symbol: string, label: string) => void;
+  userTier?: 'free' | 'basic' | 'pro' | 'ultimate';
+  dailyChatCount?: number;
+  onIncrementChatCount?: () => void;
+  onTriggerUpgrade?: () => void;
 }) {
   const [messages, setMessages] = useState<Message[]>([INITIAL_MESSAGE]);
   const [input, setInput] = useState('');
@@ -112,6 +120,17 @@ export default function AIChat({
   const handleSend = async (messageText: string = input, imageUrl?: string) => {
     const finalImage = imageUrl || localImage || selectedSnapshot?.dataUrl || undefined;
     if (!messageText.trim() && !finalImage) return;
+
+    // Verify AI chatting limits
+    if (onIncrementChatCount && onTriggerUpgrade) {
+      const limits = { free: 2, basic: 10, pro: 20, ultimate: 999999 };
+      const maxAllowed = limits[userTier];
+      if (dailyChatCount >= maxAllowed) {
+        onTriggerUpgrade();
+        return;
+      }
+      onIncrementChatCount();
+    }
 
     const userMessage: Message = {
       id: Date.now().toString(),

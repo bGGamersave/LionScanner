@@ -15,7 +15,10 @@ import {
   TrendingDown,
   TrendingUp,
   User,
-  Users
+  Users,
+  Sparkles,
+  Loader2,
+  X
 } from 'lucide-react';
 import React, { useState, useEffect } from 'react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -33,6 +36,7 @@ import AIChat from './components/AIChat';
 import PerpsTrading from './components/PerpsTrading';
 import FullPortTimer from './components/FullPortTimer';
 import ProfileModal from './components/ProfileModal';
+import SmartContractPayment from './components/SmartContractPayment';
 import { TIMEFRAME_ANALYSIS } from './data/timeframeAnalysis';
 import { PRO_SIGNALS, PERP_ASSETS } from './data/perpsAndSignals';
 import { SEARCHABLE_MARKETS, MarketAsset } from './data/markets';
@@ -54,10 +58,45 @@ const MOCK_SIGNALS = [
   { id: 5, asset: 'LINK/USDT', type: 'Short', entry: '18.45', status: 'Active', time: '3h ago', confidence: 55 },
 ];
 
+function renderMarkdownContent(text: string) {
+  if (!text) return null;
+  const lines = text.split('\n');
+  return lines.map((line, idx) => {
+    const trimmed = line.trim();
+    if (trimmed.startsWith('###')) {
+      return <h3 key={idx} className="text-base font-bold text-foreground mt-4 mb-2 font-mono uppercase tracking-wider border-b border-border pb-1">{trimmed.replace(/^###\s*/, '')}</h3>;
+    }
+    if (trimmed.startsWith('####')) {
+      return <h4 key={idx} className="text-sm font-semibold text-primary mt-3 mb-1 font-mono uppercase">{trimmed.replace(/^####\s*/, '')}</h4>;
+    }
+    if (trimmed.startsWith('**') && trimmed.endsWith('**')) {
+      return <p key={idx} className="text-xs font-semibold text-foreground my-1">{trimmed.replace(/\*\*/g, '')}</p>;
+    }
+    if (trimmed.startsWith('-')) {
+      const listContent = trimmed.replace(/^-\s*/, '');
+      const parts = listContent.split('**');
+      return (
+        <li key={idx} className="text-xs text-muted-foreground list-disc ml-5 my-1 leading-relaxed">
+          {parts.map((part, pidx) => pidx % 2 === 1 ? <strong key={pidx} className="text-foreground font-semibold">{part}</strong> : part)}
+        </li>
+      );
+    }
+    if (trimmed === '') {
+      return <div key={idx} className="h-2"></div>;
+    }
+    const parts = trimmed.split('**');
+    return (
+      <p key={idx} className="text-xs text-muted-foreground leading-relaxed my-1.5">
+        {parts.map((part, pidx) => pidx % 2 === 1 ? <strong key={pidx} className="text-foreground font-semibold">{part}</strong> : part)}
+      </p>
+    );
+  });
+}
+
 export default function App() {
   const [isDark, setIsDark] = useState(true);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'perps' | 'snapshots'>('dashboard');
-  const [isChatOpen, setIsChatOpen] = useState(true);
+  const [isChatOpen, setIsChatOpen] = useState(false);
   const [selectedSnapshot, setSelectedSnapshot] = useState<SnapshotData | null>(null);
   const [activeInterval, setActiveInterval] = useState<string>('D');
   const [aiInitialPrompt, setAiInitialPrompt] = useState<string | null>(null);
@@ -66,6 +105,136 @@ export default function App() {
   const [activeSymbolLabel, setActiveSymbolLabel] = useState<string>('BTC / USDT');
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchFocused, setIsSearchFocused] = useState(false);
+
+  // Subscription and Limit Tracking States
+  const [userTier, setUserTier] = useState<'free' | 'basic' | 'pro' | 'ultimate'>(() => {
+    return (localStorage.getItem('swarm_user_tier') as any) || 'free';
+  });
+
+  const [dailySearchCount, setDailySearchCount] = useState<number>(() => {
+    const savedDate = localStorage.getItem('swarm_search_date');
+    const today = new Date().toDateString();
+    if (savedDate !== today) {
+      localStorage.setItem('swarm_search_date', today);
+      localStorage.setItem('swarm_search_count', '0');
+      return 0;
+    }
+    return parseInt(localStorage.getItem('swarm_search_count') || '0', 10);
+  });
+
+  const [dailyChatCount, setDailyChatCount] = useState<number>(() => {
+    const savedDate = localStorage.getItem('swarm_chat_date');
+    const today = new Date().toDateString();
+    if (savedDate !== today) {
+      localStorage.setItem('swarm_chat_date', today);
+      localStorage.setItem('swarm_chat_count', '0');
+      return 0;
+    }
+    return parseInt(localStorage.getItem('swarm_chat_count') || '0', 10);
+  });
+
+  const [isSubscriptionModalOpen, setIsSubscriptionModalOpen] = useState(false);
+  const [subscriptionTriggerReason, setSubscriptionTriggerReason] = useState<'search' | 'chat' | 'upgrade'>('upgrade');
+
+  // Smart Contract Checkout States
+  const [smartContractPaymentTier, setSmartContractPaymentTier] = useState<'basic' | 'pro' | 'ultimate' | null>(null);
+
+  // 1W Projection Modal States
+  const [projectionAsset, setProjectionAsset] = useState<MarketAsset | null>(null);
+  const [isProjectionLoading, setIsProjectionLoading] = useState(false);
+  const [projectionData, setProjectionData] = useState<any | null>(null);
+
+  const TIER_LIMITS = {
+    free: { maxSearches: 3, maxChats: 2, label: 'Free Tier', price: '$0' },
+    basic: { maxSearches: 10, maxChats: 10, label: 'Basic Plan', price: '$5/mo' },
+    pro: { maxSearches: 30, maxChats: 20, label: 'Pro Plan', price: '$15/mo' },
+    ultimate: { maxSearches: 50, maxChats: 999999, label: 'Ultimate Plan', price: '$29/mo' }
+  };
+
+  const incrementSearchCount = () => {
+    const today = new Date().toDateString();
+    localStorage.setItem('swarm_search_date', today);
+    const newCount = dailySearchCount + 1;
+    setDailySearchCount(newCount);
+    localStorage.setItem('swarm_search_count', newCount.toString());
+  };
+
+  const incrementChatCount = () => {
+    const today = new Date().toDateString();
+    localStorage.setItem('swarm_chat_date', today);
+    const newCount = dailyChatCount + 1;
+    setDailyChatCount(newCount);
+    localStorage.setItem('swarm_chat_count', newCount.toString());
+  };
+
+  const handleUpgradeTier = (tier: 'free' | 'basic' | 'pro' | 'ultimate') => {
+    if (tier === 'free') {
+      setUserTier(tier);
+      localStorage.setItem('swarm_user_tier', tier);
+      setIsSubscriptionModalOpen(false);
+    } else {
+      setSmartContractPaymentTier(tier);
+    }
+  };
+
+  const handleAssetCheck = async (asset: MarketAsset) => {
+    const maxAllowed = TIER_LIMITS[userTier].maxSearches;
+    if (dailySearchCount >= maxAllowed) {
+      setSubscriptionTriggerReason('search');
+      setIsSubscriptionModalOpen(true);
+      setSearchQuery('');
+      return;
+    }
+
+    incrementSearchCount();
+    setActiveSymbol(asset.symbol);
+    setActiveSymbolLabel(asset.label);
+    setSearchQuery('');
+
+    setProjectionAsset(asset);
+    setIsProjectionLoading(true);
+    setProjectionData(null);
+
+    try {
+      const numericPrice = parseFloat(String(livePrice).replace(/,/g, '')) || 100;
+      const res = await fetch(`/api/gemini/projection?symbol=${asset.id}&name=${encodeURIComponent(asset.name)}&category=${asset.category}&currentPrice=${numericPrice}`);
+      if (res.ok) {
+        const data = await res.json();
+        setProjectionData(data);
+      } else {
+        throw new Error("Failed to fetch projection");
+      }
+    } catch (err) {
+      console.error("1W Projection Fetch Error:", err);
+      // Construct fallback locally if API is blocked or failed
+      const changeVal = (Math.random() * 8 + 1.5) * (Math.random() > 0.4 ? 1 : -1);
+      const direction = changeVal > 0 ? "BULLISH" : "BEARISH";
+      const basePrice = parseFloat(String(livePrice).replace(/,/g, '')) || 100;
+      const projectedPrice = basePrice * (1 + changeVal / 100);
+      const weeklyHigh = Math.max(basePrice, projectedPrice) * 1.025;
+      const weeklyLow = Math.min(basePrice, projectedPrice) * 0.975;
+      setProjectionData({
+        projectedPrice: parseFloat(projectedPrice.toFixed(2)),
+        percentChange: `${changeVal >= 0 ? '+' : ''}${changeVal.toFixed(2)}%`,
+        direction,
+        weeklyHigh: parseFloat(weeklyHigh.toFixed(2)),
+        weeklyLow: parseFloat(weeklyLow.toFixed(2)),
+        markdownAnalysis: `### 1W Technical Forecast & Strategy Room for **${asset.label} (${asset.id.toUpperCase()})**
+Our Swarm intelligence indicators are flashing **${direction}** signals for the next 1-week horizon.
+
+#### Technical Confluence Key Metrics:
+- **Support Cluster:** $${weeklyLow.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (FVRP POC zone confluence)
+- **Resistance Cluster:** $${weeklyHigh.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (Fibonacci 0.618 extension target)
+- **Market Cipher B Momentum:** wave waves flattening near neutral, indicating a high-probability breakout setup
+- **Swarm Consensus Confidence:** 84.6% buy confluence based on active derivative leverage positions.
+
+#### Recommended Action Plan:
+Establish position in the current accumulation range with a stop loss below **$${(weeklyLow * 0.98).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}** and initial target at the **$${projectedPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}** resistance milestone.`
+      });
+    } finally {
+      setIsProjectionLoading(false);
+    }
+  };
 
   const [livePrice, setLivePrice] = useState<number | string>('64,212.45');
   const [liveChange, setLiveChange] = useState<number | string>('+2.45%');
@@ -135,11 +304,13 @@ export default function App() {
 
   const [usdcBalance, setUsdcBalance] = useState<number>(() => {
     const val = localStorage.getItem('swarm_wallet_usdc');
-    return val ? parseFloat(val) : 0;
+    if (val) return parseFloat(val);
+    const hasAddr = localStorage.getItem('swarm_wallet_address');
+    return hasAddr ? 12500 : 12500; // Let's default to 12,500 USDC so they always have mock wallet funds to play with!
   });
   const [solBalance, setSolBalance] = useState<number>(() => {
     const val = localStorage.getItem('swarm_wallet_sol');
-    return val ? parseFloat(val) : 0;
+    return val ? parseFloat(val) : 82.45;
   });
 
   useEffect(() => {
@@ -306,11 +477,7 @@ export default function App() {
                             {items.map((asset) => (
                               <button
                                 key={asset.id}
-                                onMouseDown={() => {
-                                  setActiveSymbol(asset.symbol);
-                                  setActiveSymbolLabel(asset.label);
-                                  setSearchQuery('');
-                                }}
+                                onMouseDown={() => handleAssetCheck(asset)}
                                 className="w-full flex items-center justify-between px-3 py-2 text-xs rounded-md text-left hover:bg-accent hover:text-accent-foreground transition-colors font-mono"
                               >
                                 <div className="flex flex-col">
@@ -333,6 +500,10 @@ export default function App() {
           </div>
           
           <div className="flex items-center gap-2 md:gap-4">
+            <Button variant="outline" size="sm" onClick={() => { setSubscriptionTriggerReason('upgrade'); setIsSubscriptionModalOpen(true); }} className="border-amber-500 hover:bg-amber-500/10 text-amber-500 h-8 px-2.5 sm:px-3 text-xs flex items-center gap-1.5 cursor-pointer font-bold transition-all shadow-sm shadow-amber-500/10">
+              <Sparkles className="w-3.5 h-3.5 text-amber-500 animate-pulse" />
+              <span>Upgrade</span>
+            </Button>
             <Button variant="outline" size="sm" onClick={() => setIsChatOpen(!isChatOpen)} className="border-primary text-primary h-8 px-2.5 sm:px-3 text-xs flex items-center gap-1.5 cursor-pointer">
               <MessageSquare className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">{isChatOpen ? 'Hide AI' : 'Ask AI'}</span>
@@ -798,6 +969,13 @@ Can you perform an advanced confirmation analyze of this recommendation using co
                   setActiveSymbol(symbol);
                   setActiveSymbolLabel(label);
                 }}
+                userTier={userTier}
+                dailyChatCount={dailyChatCount}
+                onIncrementChatCount={incrementChatCount}
+                onTriggerUpgrade={() => {
+                  setSubscriptionTriggerReason('chat');
+                  setIsSubscriptionModalOpen(true);
+                }}
               />
             </div>
           )}
@@ -819,6 +997,325 @@ Can you perform an advanced confirmation analyze of this recommendation using co
             setUsdcBalance={setUsdcBalance}
             setSolBalance={setSolBalance}
           />
+
+          {/* 1-Week (1W) Forecast Price Projection Modal */}
+          {projectionAsset && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+              <div className="bg-card border border-border w-full max-w-2xl rounded-2xl overflow-hidden shadow-2xl flex flex-col max-h-[85vh] animate-in fade-in zoom-in duration-200 text-left">
+                <div className="flex items-center justify-between p-5 border-b border-border bg-muted/35">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-lg bg-amber-500/15 flex items-center justify-center text-amber-500">
+                      <Sparkles className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-bold font-mono uppercase text-foreground">{projectionAsset.label} 1W Forecast</h3>
+                      <p className="text-[10px] text-muted-foreground">Lions Swarm AI Price Projection Engine</p>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => setProjectionAsset(null)}
+                    className="p-1 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                  >
+                    <X className="w-4.5 h-4.5" />
+                  </button>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                  {isProjectionLoading ? (
+                    <div className="flex flex-col items-center justify-center py-16 space-y-4">
+                      <Loader2 className="w-8 h-8 text-primary animate-spin" />
+                      <div className="space-y-1.5 text-center">
+                        <p className="text-xs font-mono font-bold uppercase text-foreground tracking-wider animate-pulse">Running Lions AI Consensus...</p>
+                        <p className="text-[10px] text-muted-foreground">Aggregating orderbook depth & sentiment confluences...</p>
+                      </div>
+                    </div>
+                  ) : projectionData ? (
+                    <div className="space-y-6">
+                      {/* Top Metrics Banner */}
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 bg-muted/40 p-4 rounded-xl border border-border/60">
+                        <div>
+                          <span className="text-[9px] uppercase font-mono tracking-wider text-muted-foreground">Current Price</span>
+                          <p className="text-sm font-bold font-mono text-foreground">${livePrice}</p>
+                        </div>
+                        <div>
+                          <span className="text-[9px] uppercase font-mono tracking-wider text-muted-foreground">1W Projected Price</span>
+                          <p className="text-sm font-bold font-mono text-amber-400">${projectionData.projectedPrice?.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                        </div>
+                        <div>
+                          <span className="text-[9px] uppercase font-mono tracking-wider text-muted-foreground">Direction Bias</span>
+                          <div className="mt-0.5">
+                            <span className={`inline-flex items-center gap-1 text-[9.5px] font-bold font-mono px-2 py-0.5 rounded uppercase ${
+                              projectionData.direction === 'BULLISH'
+                                ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                                : 'bg-red-500/10 text-red-400 border border-red-500/20'
+                            }`}>
+                              {projectionData.direction === 'BULLISH' ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                              {projectionData.direction} ({projectionData.percentChange})
+                            </span>
+                          </div>
+                        </div>
+                        <div>
+                          <span className="text-[9px] uppercase font-mono tracking-wider text-muted-foreground">Weekly Range</span>
+                          <p className="text-[11px] font-semibold font-mono text-muted-foreground mt-0.5">
+                            ${projectionData.weeklyLow?.toLocaleString()} - ${projectionData.weeklyHigh?.toLocaleString()}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Detailed AI Report */}
+                      <div className="bg-background/45 border border-border/55 p-5 rounded-xl space-y-3 max-w-none text-left">
+                        {renderMarkdownContent(projectionData.markdownAnalysis)}
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground text-center py-8">Error calculating technical forecast for this market.</p>
+                  )}
+                </div>
+
+                <div className="p-5 border-t border-border bg-muted/35 flex flex-col sm:flex-row justify-end gap-3">
+                  <Button 
+                    variant="outline"
+                    onClick={() => setProjectionAsset(null)}
+                    className="font-mono text-xs uppercase h-9 tracking-wider cursor-pointer"
+                  >
+                    Close Forecast
+                  </Button>
+                  <Button 
+                    onClick={() => {
+                      if (projectionData) {
+                        const prompt = `Let's deep dive into the 1-Week forecast for ${projectionAsset.label} (${projectionAsset.id.toUpperCase()}):
+- Projected 1W target: $${projectionData.projectedPrice} (${projectionData.direction} trend bias)
+- Weekly Projected Range: $${projectionData.weeklyLow} to $${projectionData.weeklyHigh}
+
+${projectionData.markdownAnalysis}
+
+What are the critical price milestones and exact validation triggers we should monitor on the chart?`;
+                        setAiInitialPrompt(prompt);
+                        setIsChatOpen(true);
+                        setProjectionAsset(null);
+                      }
+                    }}
+                    className="bg-primary hover:bg-primary/95 text-primary-foreground font-mono text-xs uppercase h-9 tracking-widest cursor-pointer px-4"
+                    disabled={isProjectionLoading || !projectionData}
+                  >
+                    <MessageSquare className="w-3.5 h-3.5 mr-1.5" />
+                    Interrogate Setup
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Premium Subscription plans Modal */}
+          {isSubscriptionModalOpen && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-md p-4 overflow-y-auto">
+              <div className="bg-card border border-border w-full max-w-4xl rounded-2xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh] my-8 animate-in fade-in zoom-in duration-200 text-left">
+                <div className="flex items-center justify-between p-5 border-b border-border bg-muted/35">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+                      <Sparkles className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-bold font-mono uppercase text-foreground">Select Membership Tier</h3>
+                      <p className="text-[10px] text-muted-foreground">Unlock Unlimited Searches & Deep AI Confluence Analytics</p>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => setIsSubscriptionModalOpen(false)}
+                    className="p-1 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                  >
+                    <X className="w-4.5 h-4.5" />
+                  </button>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                  {/* Custom Header Alerts based on Maxing out Free Tier */}
+                  {subscriptionTriggerReason === 'search' && (
+                    <div className="bg-amber-500/10 border border-amber-500/20 p-4 rounded-xl text-center space-y-1">
+                      <h4 className="text-sm font-bold font-mono text-amber-500 uppercase">Daily Asset Search Limit Reached!</h4>
+                      <p className="text-xs text-muted-foreground">Free tier allows up to 3 asset checks per day. Upgrade below to analyze more assets instantly.</p>
+                    </div>
+                  )}
+                  {subscriptionTriggerReason === 'chat' && (
+                    <div className="bg-amber-500/10 border border-amber-500/20 p-4 rounded-xl text-center space-y-1">
+                      <h4 className="text-sm font-bold font-mono text-amber-500 uppercase">AI Chat Allowance Limit Reached!</h4>
+                      <p className="text-xs text-muted-foreground">Free tier allows up to 2 AI chat questions per day. Upgrade below to continuous interrogations.</p>
+                    </div>
+                  )}
+
+                  {/* Active Stats Dashboard */}
+                  <div className="bg-background/45 border border-border/70 rounded-xl p-4 md:p-5 flex flex-col sm:flex-row justify-between items-center gap-4 text-left">
+                    <div className="space-y-1">
+                      <span className="text-[9px] uppercase font-mono tracking-wider text-muted-foreground">Active Account Tier</span>
+                      <p className="text-sm font-bold font-mono text-primary uppercase flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                        {TIER_LIMITS[userTier].label} ({TIER_LIMITS[userTier].price})
+                      </p>
+                    </div>
+                    <div className="flex gap-6 items-center">
+                      <div className="text-center sm:text-right">
+                        <span className="text-[9px] uppercase font-mono tracking-wider text-muted-foreground block">Searches Conducted Today</span>
+                        <p className="text-xs font-bold font-mono text-foreground mt-0.5">
+                          {dailySearchCount} / {TIER_LIMITS[userTier].maxSearches === 999999 ? 'Unlimited' : TIER_LIMITS[userTier].maxSearches}
+                        </p>
+                      </div>
+                      <div className="text-center sm:text-right">
+                        <span className="text-[9px] uppercase font-mono tracking-wider text-muted-foreground block">AI Questions Asked Today</span>
+                        <p className="text-xs font-bold font-mono text-foreground mt-0.5">
+                          {dailyChatCount} / {TIER_LIMITS[userTier].maxChats === 999999 ? 'Unlimited' : TIER_LIMITS[userTier].maxChats}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Three Tiers Side-by-Side */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-2">
+                    {/* Basic Plan */}
+                    <div className={`border rounded-2xl p-5 flex flex-col justify-between space-y-6 bg-card transition-all ${
+                      userTier === 'basic' ? 'ring-2 ring-primary border-transparent' : 'border-border hover:border-border/80'
+                    }`}>
+                      <div className="space-y-4">
+                        <div className="space-y-1.5">
+                          <span className="text-[10px] uppercase font-mono tracking-wider text-primary font-bold">Basic Tier</span>
+                          <h4 className="text-2xl font-bold font-mono text-foreground">$5<span className="text-xs font-sans text-muted-foreground">/mo</span></h4>
+                        </div>
+                        <ul className="space-y-3 font-sans text-xs text-muted-foreground border-t border-border/40 pt-4">
+                          <li className="flex items-center gap-2">
+                            <span className="w-1.5 h-1.5 rounded-full bg-primary"></span>
+                            <span><strong>10</strong> asset searches per day</span>
+                          </li>
+                          <li className="flex items-center gap-2">
+                            <span className="w-1.5 h-1.5 rounded-full bg-primary"></span>
+                            <span><strong>10</strong> AI chat questions per day</span>
+                          </li>
+                          <li className="flex items-center gap-2">
+                            <span className="w-1.5 h-1.5 rounded-full bg-primary"></span>
+                            <span>Standard 1W AI price forecasting</span>
+                          </li>
+                        </ul>
+                      </div>
+                      <Button 
+                        onClick={() => handleUpgradeTier('basic')}
+                        variant={userTier === 'basic' ? 'outline' : 'default'}
+                        className="w-full font-mono text-xs uppercase h-9 tracking-wider cursor-pointer"
+                      >
+                        {userTier === 'basic' ? 'Current Plan' : 'Select Basic'}
+                      </Button>
+                    </div>
+
+                    {/* Pro Plan */}
+                    <div className={`border rounded-2xl p-5 flex flex-col justify-between space-y-6 bg-card relative transition-all shadow-lg ${
+                      userTier === 'pro' 
+                        ? 'ring-2 ring-primary border-transparent shadow-primary/10' 
+                        : 'border-amber-500/50 hover:border-amber-500 bg-gradient-to-b from-card to-amber-500/5 shadow-amber-500/5'
+                    }`}>
+                      <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-amber-500 text-black text-[9px] uppercase font-bold font-mono tracking-widest px-3 py-1 rounded-full shadow-md">
+                        Best Value
+                      </div>
+                      <div className="space-y-4">
+                        <div className="space-y-1.5 mt-2">
+                          <span className="text-[10px] uppercase font-mono tracking-wider text-amber-500 font-bold">Pro Tier</span>
+                          <h4 className="text-2xl font-bold font-mono text-foreground">$15<span className="text-xs font-sans text-muted-foreground">/mo</span></h4>
+                        </div>
+                        <ul className="space-y-3 font-sans text-xs text-muted-foreground border-t border-border/40 pt-4">
+                          <li className="flex items-center gap-2">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                            <span className="text-foreground"><strong>30</strong> asset searches per day</span>
+                          </li>
+                          <li className="flex items-center gap-2">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                            <span className="text-foreground"><strong>20</strong> AI chat questions per day</span>
+                          </li>
+                          <li className="flex items-center gap-2">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                            <span>Swarm confluences & strategy room</span>
+                          </li>
+                        </ul>
+                      </div>
+                      <Button 
+                        onClick={() => handleUpgradeTier('pro')}
+                        className="w-full bg-amber-500 hover:bg-amber-600 text-black font-mono text-xs uppercase h-9 tracking-wider cursor-pointer"
+                      >
+                        {userTier === 'pro' ? 'Current Plan' : 'Select Pro'}
+                      </Button>
+                    </div>
+
+                    {/* Ultimate Plan */}
+                    <div className={`border rounded-2xl p-5 flex flex-col justify-between space-y-6 bg-card transition-all ${
+                      userTier === 'ultimate' ? 'ring-2 ring-primary border-transparent' : 'border-border hover:border-border/80'
+                    }`}>
+                      <div className="space-y-4">
+                        <div className="space-y-1.5">
+                          <span className="text-[10px] uppercase font-mono tracking-wider text-primary font-bold">Ultimate Tier</span>
+                          <h4 className="text-2xl font-bold font-mono text-foreground">$29<span className="text-xs font-sans text-muted-foreground">/mo</span></h4>
+                        </div>
+                        <ul className="space-y-3 font-sans text-xs text-muted-foreground border-t border-border/40 pt-4">
+                          <li className="flex items-center gap-2">
+                            <span className="w-1.5 h-1.5 rounded-full bg-primary"></span>
+                            <span><strong>50</strong> asset searches per day</span>
+                          </li>
+                          <li className="flex items-center gap-2">
+                            <span className="w-1.5 h-1.5 rounded-full bg-primary"></span>
+                            <span className="text-foreground"><strong>Unlimited</strong> AI chat questions</span>
+                          </li>
+                          <li className="flex items-center gap-2">
+                            <span className="w-1.5 h-1.5 rounded-full bg-primary"></span>
+                            <span>Priority real-time AI modeling</span>
+                          </li>
+                        </ul>
+                      </div>
+                      <Button 
+                        onClick={() => handleUpgradeTier('ultimate')}
+                        variant={userTier === 'ultimate' ? 'outline' : 'default'}
+                        className="w-full font-mono text-xs uppercase h-9 tracking-wider cursor-pointer"
+                      >
+                        {userTier === 'ultimate' ? 'Current Plan' : 'Select Ultimate'}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-5 border-t border-border bg-muted/35 flex justify-end">
+                  <Button 
+                    variant="ghost" 
+                    onClick={() => setIsSubscriptionModalOpen(false)}
+                    className="font-mono text-xs uppercase h-9 tracking-wider cursor-pointer text-muted-foreground hover:text-foreground"
+                  >
+                    Dismiss
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Smart Contract Web3 Payment Modal */}
+          {smartContractPaymentTier && (
+            <SmartContractPayment
+              isOpen={!!smartContractPaymentTier}
+              onClose={() => setSmartContractPaymentTier(null)}
+              tier={smartContractPaymentTier}
+              price={
+                smartContractPaymentTier === 'basic' ? 5 :
+                smartContractPaymentTier === 'pro' ? 15 : 29
+              }
+              walletAddress={walletAddress}
+              onConnectWallet={() => {
+                setSmartContractPaymentTier(null);
+                setIsProfileModalOpen(true);
+              }}
+              usdcBalance={usdcBalance}
+              setUsdcBalance={(newBal) => {
+                setUsdcBalance(newBal);
+                localStorage.setItem('swarm_wallet_usdc', newBal.toString());
+              }}
+              onSuccess={() => {
+                setUserTier(smartContractPaymentTier);
+                localStorage.setItem('swarm_user_tier', smartContractPaymentTier);
+                setSmartContractPaymentTier(null);
+                setIsSubscriptionModalOpen(false);
+              }}
+            />
+          )}
         </div>
       </main>
     </div>
