@@ -57,7 +57,7 @@ const MOCK_SIGNALS = [
 export default function App() {
   const [isDark, setIsDark] = useState(true);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'perps' | 'snapshots'>('dashboard');
-  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [isChatOpen, setIsChatOpen] = useState(true);
   const [selectedSnapshot, setSelectedSnapshot] = useState<SnapshotData | null>(null);
   const [activeInterval, setActiveInterval] = useState<string>('D');
   const [aiInitialPrompt, setAiInitialPrompt] = useState<string | null>(null);
