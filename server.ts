@@ -547,6 +547,35 @@ async function startServer() {
     }
   });
 
+  // API Route for bulk CoinGecko Quotes
+  app.get("/api/coingecko/quotes", async (req, res) => {
+    try {
+      const { symbols } = req.query;
+      if (!symbols || typeof symbols !== "string") {
+        return res.status(400).json({ error: "Symbols parameter is required (comma-separated)" });
+      }
+      const symbolList = symbols.split(",").map(s => s.trim().toUpperCase());
+      const results: Record<string, any> = {};
+      
+      const promises = symbolList.map(async (symbol) => {
+        try {
+          const quote = await resolveRealtimeQuote(symbol);
+          if (quote && quote.data && quote.data[symbol]) {
+            results[symbol] = quote.data[symbol];
+          }
+        } catch (e: any) {
+          console.error(`Error resolving bulk quote for ${symbol}:`, e.message);
+        }
+      });
+      
+      await Promise.all(promises);
+      res.json({ data: results });
+    } catch (error: any) {
+      console.error("Error in bulk resolveRealtimeQuote:", error.message);
+      res.status(500).json({ error: "Failed to resolve bulk quotes" });
+    }
+  });
+
   // Backward compatible route mapping for CMC queries backed by CoinGecko
   app.get("/api/cmc/quote", async (req, res) => {
     try {

@@ -59,7 +59,10 @@ export default function AIChat({
   userTier = 'free',
   dailyChatCount = 0,
   onIncrementChatCount,
-  onTriggerUpgrade
+  onTriggerUpgrade,
+  dailyApiCount = 0,
+  maxApiRequests = 100,
+  onIncrementApiCount
 }: { 
   selectedSnapshot?: SnapshotData | null; 
   onClearSnapshot: () => void; 
@@ -71,6 +74,9 @@ export default function AIChat({
   dailyChatCount?: number;
   onIncrementChatCount?: () => void;
   onTriggerUpgrade?: () => void;
+  dailyApiCount?: number;
+  maxApiRequests?: number;
+  onIncrementApiCount?: () => void;
 }) {
   const [messages, setMessages] = useState<Message[]>([INITIAL_MESSAGE]);
   const [input, setInput] = useState('');
@@ -150,6 +156,14 @@ export default function AIChat({
     const finalImage = imageUrl || localImage || selectedSnapshot?.dataUrl || undefined;
     if (!messageText.trim() && !finalImage) return;
 
+    // Verify API limits first
+    if (dailyApiCount >= maxApiRequests) {
+      if (onTriggerUpgrade) {
+        onTriggerUpgrade();
+      }
+      return;
+    }
+
     // Verify AI chatting limits
     if (onIncrementChatCount && onTriggerUpgrade) {
       const limits = { free: 2, basic: 10, pro: 20, ultimate: 999999 };
@@ -159,6 +173,11 @@ export default function AIChat({
         return;
       }
       onIncrementChatCount();
+    }
+
+    // Increment API count
+    if (onIncrementApiCount) {
+      onIncrementApiCount();
     }
 
     const userMessage: Message = {

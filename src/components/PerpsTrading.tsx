@@ -54,6 +54,7 @@ interface PerpsTradingProps {
   solBalance: number;
   setSolBalance: (balance: number | ((prev: number) => number)) => void;
   onSendToAI: (prompt: string) => void;
+  globalPrices?: Record<string, { price: number; change24h: number; volume24h?: number; high24h?: number; low24h?: number; marketCap?: number }>;
 }
 
 interface Position {
@@ -79,7 +80,8 @@ export default function PerpsTrading({
   setUsdcBalance,
   solBalance,
   setSolBalance,
-  onSendToAI
+  onSendToAI,
+  globalPrices = {}
 }: PerpsTradingProps) {
   // Navigation & filtering states
   const [selectedCategory, setSelectedCategory] = useState<'All' | 'Crypto' | 'Stocks' | 'Commodities' | 'Forex'>('All');
@@ -250,6 +252,22 @@ export default function PerpsTrading({
 
     return () => clearInterval(timer);
   }, []);
+
+  // Synchronize simulatedPrices with incoming CoinGecko live feed (globalPrices)
+  useEffect(() => {
+    if (Object.keys(globalPrices).length > 0) {
+      setSimulatedPrices(prev => {
+        const next = { ...prev };
+        Object.keys(globalPrices).forEach(ticker => {
+          const matchedAsset = PERP_ASSETS.find(a => a.symbol.startsWith(ticker + '/'));
+          if (matchedAsset) {
+            next[matchedAsset.symbol] = globalPrices[ticker].price;
+          }
+        });
+        return next;
+      });
+    }
+  }, [globalPrices]);
 
   // Update positions based on fluctuating simulated prices
   useEffect(() => {
@@ -639,6 +657,10 @@ export default function PerpsTrading({
                     const isSelected = selectedAsset.symbol === asset.symbol;
                     const price = simulatedPrices[asset.symbol] || asset.price;
                     const isForex = asset.category === 'Forex';
+                    const ticker = asset.symbol.split('/')[0].toUpperCase();
+                    const liveInfo = globalPrices[ticker];
+                    const change24h = liveInfo ? liveInfo.change24h : asset.change24h;
+
                     return (
                       <button
                         key={asset.symbol}
@@ -660,8 +682,8 @@ export default function PerpsTrading({
                         </div>
                         <div className="text-right space-y-0.5">
                           <span className="text-xs font-mono font-bold block">{formatCurrency(price, isForex)}</span>
-                          <span className={`text-[9px] font-mono leading-none ${asset.change24h >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
-                            {asset.change24h >= 0 ? '+' : ''}{asset.change24h.toFixed(2)}%
+                          <span className={`text-[9px] font-mono leading-none ${change24h >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+                            {change24h >= 0 ? '+' : ''}{change24h.toFixed(2)}%
                           </span>
                         </div>
                       </button>
@@ -695,9 +717,16 @@ export default function PerpsTrading({
                   {formatCurrency(simulatedPrices[selectedAsset.symbol] || selectedAsset.price, selectedAsset.category === 'Forex')}
                 </p>
                 <div className="flex items-center justify-end gap-2 text-[10px] text-muted-foreground font-mono mt-0.5">
-                  <span className={selectedAsset.change24h >= 0 ? 'text-emerald-500' : 'text-red-500'}>
-                    {selectedAsset.change24h >= 0 ? '+' : ''}{selectedAsset.change24h.toFixed(2)}%
-                  </span>
+                  {(() => {
+                    const ticker = selectedAsset.symbol.split('/')[0].toUpperCase();
+                    const liveInfo = globalPrices[ticker];
+                    const change24h = liveInfo ? liveInfo.change24h : selectedAsset.change24h;
+                    return (
+                      <span className={change24h >= 0 ? 'text-emerald-500' : 'text-red-500'}>
+                        {change24h >= 0 ? '+' : ''}{change24h.toFixed(2)}%
+                      </span>
+                    );
+                  })()}
                   <span>|</span>
                   <span>Funding: <span className="text-primary">{selectedAsset.fundingRate}</span></span>
                 </div>

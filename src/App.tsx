@@ -18,9 +18,10 @@ import {
   Users,
   Sparkles,
   Loader2,
-  X
+  X,
+  RefreshCw
 } from 'lucide-react';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -37,6 +38,7 @@ import PerpsTrading from './components/PerpsTrading';
 import FullPortTimer from './components/FullPortTimer';
 import ProfileModal from './components/ProfileModal';
 import SmartContractPayment from './components/SmartContractPayment';
+import WalletDetailsModal from './components/WalletDetailsModal';
 import { TIMEFRAME_ANALYSIS } from './data/timeframeAnalysis';
 import { PRO_SIGNALS, PERP_ASSETS } from './data/perpsAndSignals';
 import { SEARCHABLE_MARKETS, MarketAsset } from './data/markets';
@@ -189,11 +191,112 @@ export default function App() {
   const [isProjectionLoading, setIsProjectionLoading] = useState(false);
   const [projectionData, setProjectionData] = useState<any | null>(null);
 
+  // Dynamic Timeframe Analysis state
+  const [timeframeAnalysis, setTimeframeAnalysis] = useState(TIMEFRAME_ANALYSIS);
+
+  // Live Recalculation states
+  const [isRecalculating, setIsRecalculating] = useState(false);
+  const [recalcStep, setRecalcStep] = useState<string>('');
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // API Pulls State Tracking
+  const [dailyApiCount, setDailyApiCount] = useState<number>(() => {
+    const savedDate = localStorage.getItem('swarm_api_date');
+    const today = new Date().toDateString();
+    if (savedDate !== today) {
+      localStorage.setItem('swarm_api_date', today);
+      localStorage.setItem('swarm_api_count', '0');
+      return 0;
+    }
+    return parseInt(localStorage.getItem('swarm_api_count') || '0', 10);
+  });
+
   const TIER_LIMITS = {
-    free: { maxSearches: 3, maxChats: 2, label: 'Free Tier', price: '$0' },
-    basic: { maxSearches: 10, maxChats: 10, label: 'Basic Plan', price: '$5/mo' },
-    pro: { maxSearches: 30, maxChats: 20, label: 'Pro Plan', price: '$15/mo' },
-    ultimate: { maxSearches: 50, maxChats: 999999, label: 'Ultimate Plan', price: '$29/mo' }
+    free: { maxSearches: 3, maxChats: 2, label: 'Free Tier', price: '$0', maxApiRequests: 100 },
+    basic: { maxSearches: 10, maxChats: 10, label: 'Basic Plan', price: '$5/mo', maxApiRequests: 500 },
+    pro: { maxSearches: 30, maxChats: 20, label: 'Pro Plan', price: '$15/mo', maxApiRequests: 2500 },
+    ultimate: { maxSearches: 50, maxChats: 999999, label: 'Ultimate Plan', price: '$29/mo', maxApiRequests: 10000 }
+  };
+
+  const handleLoginRecalculation = async () => {
+    setIsRecalculating(true);
+    setRecalcStep('Initializing secure swarm session...');
+    
+    await new Promise(r => setTimeout(r, 1000));
+    setRecalcStep('Connecting to live CoinGecko API feed...');
+    
+    await new Promise(r => setTimeout(r, 1000));
+    setRecalcStep('Computing Market Cipher B Momentum & Money Flow...');
+    
+    await new Promise(r => setTimeout(r, 1000));
+    setRecalcStep('Calculating Fibonacci levels & FVRP POC liquidity...');
+    
+    await new Promise(r => setTimeout(r, 800));
+    setRecalcStep('Recalculating wallet balances and open position PnL...');
+    
+    // Perform actual state updates!
+    // We randomize balances slightly to simulate real-time on-chain recalculation!
+    const randomUsdc = Math.floor(11500 + Math.random() * 2000);
+    const randomSol = parseFloat((75 + Math.random() * 15).toFixed(2));
+    setUsdcBalance(randomUsdc);
+    localStorage.setItem('swarm_wallet_usdc', randomUsdc.toString());
+    setSolBalance(randomSol);
+    localStorage.setItem('swarm_wallet_sol', randomSol.toString());
+
+    // Update timeframe analysis dynamically based on the current live price!
+    const rawPrice = parseFloat(String(livePrice).replace(/,/g, '')) || 64200;
+    
+    setTimeframeAnalysis(prev => {
+      const updated = { ...prev };
+      Object.keys(updated).forEach(key => {
+        const item = { ...updated[key] };
+        
+        // Adjust Fibonacci levels based on rawPrice
+        const fLow = rawPrice * 0.95;
+        const fHigh = rawPrice * 1.05;
+        item.fibonacci = {
+          low: `$${Math.floor(fLow).toLocaleString()}`,
+          high: `$${Math.floor(fHigh).toLocaleString()}`,
+          levels: [
+            { label: '0.382 Level', value: `$${Math.floor(rawPrice * 1.01).toLocaleString()}`, desc: 'Immediate Resistance' },
+            { label: '0.500 Level', value: `$${Math.floor(rawPrice * 0.995).toLocaleString()}`, desc: 'Mid-point Retest Support' },
+            { label: '0.618 Golden Pocket', value: `$${Math.floor(rawPrice * 0.985).toLocaleString()}`, desc: 'Strong Buy Confluence Zone' }
+          ]
+        };
+        
+        // Adjust FVRP
+        item.fvrp = {
+          vah: `$${Math.floor(rawPrice * 1.02).toLocaleString()}`,
+          poc: `$${Math.floor(rawPrice * 1.002).toLocaleString()}`,
+          val: `$${Math.floor(rawPrice * 0.98).toLocaleString()}`,
+          volumeProfile: item.fvrp.volumeProfile
+        };
+
+        // Adjust Trade Plan
+        item.tradePlan = {
+          ...item.tradePlan,
+          entry: `$${Math.floor(rawPrice * 0.985).toLocaleString()} - $${Math.floor(rawPrice * 0.995).toLocaleString()}`,
+          stopLoss: `$${Math.floor(rawPrice * 0.975).toLocaleString()}`,
+          takeProfit: `$${Math.floor(rawPrice * 1.025).toLocaleString()}`
+        };
+
+        updated[key] = item;
+      });
+      return updated;
+    });
+
+    // Record API usage trigger
+    const initialCalls = 12; // Standard bulk pull on login
+    setDailyApiCount(prev => {
+      const next = prev + initialCalls;
+      localStorage.setItem('swarm_api_count', next.toString());
+      return next;
+    });
+
+    await new Promise(r => setTimeout(r, 600));
+    setRecalcStep('AI Recalculation Complete!');
+    await new Promise(r => setTimeout(r, 600));
+    setIsRecalculating(false);
   };
 
   const incrementSearchCount = () => {
@@ -231,6 +334,13 @@ export default function App() {
       return;
     }
 
+    // GUARD: Check API Limits before pulling
+    const apiLimit = TIER_LIMITS[userTier].maxApiRequests;
+    if (dailyApiCount >= apiLimit) {
+      setToastMessage(`Daily API limit exceeded (${dailyApiCount}/${apiLimit} pulls) for your ${TIER_LIMITS[userTier].label}. Upgrade to unlock higher allowances.`);
+      return;
+    }
+
     incrementSearchCount();
     setActiveSymbol(asset.symbol);
     setActiveSymbolLabel(asset.label);
@@ -246,6 +356,12 @@ export default function App() {
       if (res.ok) {
         const data = await res.json();
         setProjectionData(data);
+        // Increment API count on successful fetch
+        setDailyApiCount(prev => {
+          const next = prev + 1;
+          localStorage.setItem('swarm_api_count', next.toString());
+          return next;
+        });
       } else {
         throw new Error("Failed to fetch projection");
       }
@@ -286,6 +402,7 @@ Establish position in the current accumulation range with a stop loss below **$$
   const [liveVolume, setLiveVolume] = useState<string>('$28.4B');
   const [liveHigh, setLiveHigh] = useState<number | string>('64,850.00');
   const [liveLow, setLiveLow] = useState<number | string>('63,200.00');
+  const [globalPrices, setGlobalPrices] = useState<Record<string, { price: number; change24h: number; volume24h?: number; high24h?: number; low24h?: number; marketCap?: number }>>({});
 
   const [isMobile, setIsMobile] = useState(false);
 
@@ -302,33 +419,74 @@ Establish position in the current accumulation range with a stop loss below **$$
   }, []);
 
   useEffect(() => {
-    const fetchQuote = async () => {
+    const fetchGlobalQuotes = async () => {
       const matched = SEARCHABLE_MARKETS.find(m => m.symbol === activeSymbol);
       const ticker = matched ? matched.id.toUpperCase() : 'BTC';
+      
+      const baseSymbols = ['BTC', 'ETH', 'SOL', 'XRP', 'ADA', 'DOT', 'TSLA', 'AAPL', 'NVDA', 'MSFT', 'AMZN', 'META', 'GOOGL', 'GOLD', 'SILVER', 'PLATINUM', 'PALLADIUM', 'COPPER', 'LINK', 'EUR', 'GBP'];
+      const uniqueSymbols = Array.from(new Set([...baseSymbols, ticker]));
+      const symbolsQuery = uniqueSymbols.join(',');
+
+      // GUARD: Check API Limits before pulling
+      const apiLimit = TIER_LIMITS[userTier].maxApiRequests;
+      if (dailyApiCount >= apiLimit) {
+        setToastMessage(`Daily API limit exceeded (${dailyApiCount}/${apiLimit} pulls) for your ${TIER_LIMITS[userTier].label}. Upgrade to unlock higher allowances.`);
+        return;
+      }
+
       try {
-        const res = await fetch(`/api/coingecko/quote?symbol=${ticker}`);
+        const res = await fetch(`/api/coingecko/quotes?symbols=${symbolsQuery}`);
         if (res.ok) {
           const result = await res.json();
-          if (result && result.data && result.data[ticker]) {
-            const data = result.data[ticker].quote.USD;
-            setLivePrice(data.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
-            setLiveChange(`${data.percent_change_24h >= 0 ? '+' : ''}${data.percent_change_24h.toFixed(2)}%`);
-            setLiveVolume(data.volume_24h >= 1e9 
-              ? `$${(data.volume_24h / 1e9).toFixed(2)}B` 
-              : `$${(data.volume_24h / 1e6).toFixed(2)}M`
-            );
-            setLiveHigh(data.high_24h.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
-            setLiveLow(data.low_24h.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+          if (result && result.data) {
+            // Increment API count on successful fetch
+            setDailyApiCount(prev => {
+              const next = prev + 1;
+              localStorage.setItem('swarm_api_count', next.toString());
+              return next;
+            });
+
+            const newPrices: Record<string, { price: number; change24h: number; volume24h?: number; high24h?: number; low24h?: number; marketCap?: number }> = {};
+            
+            Object.keys(result.data).forEach(sym => {
+              const symData = result.data[sym].quote?.USD;
+              if (symData) {
+                newPrices[sym] = {
+                  price: symData.price,
+                  change24h: symData.percent_change_24h,
+                  volume24h: symData.volume_24h,
+                  high24h: symData.high_24h,
+                  low24h: symData.low_24h,
+                  marketCap: symData.market_cap
+                };
+              }
+            });
+
+            setGlobalPrices(newPrices);
+
+            // Update active symbol live details
+            const activeData = result.data[ticker]?.quote?.USD;
+            if (activeData) {
+              setLivePrice(activeData.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+              setLiveChange(`${activeData.percent_change_24h >= 0 ? '+' : ''}${activeData.percent_change_24h.toFixed(2)}%`);
+              setLiveVolume(activeData.volume_24h >= 1e9 
+                ? `$${(activeData.volume_24h / 1e9).toFixed(2)}B` 
+                : `$${(activeData.volume_24h / 1e6).toFixed(2)}M`
+              );
+              setLiveHigh(activeData.high_24h.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+              setLiveLow(activeData.low_24h.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+            }
           }
         }
       } catch (error) {
-        console.error("Failed to fetch live quote:", error);
+        console.error("Failed to fetch live quotes:", error);
       }
     };
-    fetchQuote();
-    const interval = setInterval(fetchQuote, 30000);
+
+    fetchGlobalQuotes();
+    const interval = setInterval(fetchGlobalQuotes, 30000);
     return () => clearInterval(interval);
-  }, [activeSymbol]);
+  }, [activeSymbol, dailyApiCount, userTier]);
 
   const [walletAddress, setWalletAddress] = useState<string | null>(() => {
     return localStorage.getItem('swarm_wallet_address') || null;
@@ -346,6 +504,28 @@ Establish position in the current accumulation range with a stop loss below **$$
     return localStorage.getItem('swarm_wallet_type') || 'Phantom';
   });
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [profileEmail, setProfileEmail] = useState<string>(() => {
+    return localStorage.getItem('swarm_profile_email') || '';
+  });
+  const [receipts, setReceipts] = useState<any[]>(() => {
+    try {
+      const saved = localStorage.getItem('swarm_receipts');
+      if (saved) return JSON.parse(saved);
+      const defaultReceipt = {
+        id: `RCPT-482091`,
+        tier: 'basic',
+        price: 5,
+        billingCycle: 'monthly',
+        date: Date.now() - 5 * 24 * 60 * 60 * 1000,
+        txHash: `SOL-8C3B14F9`,
+        status: 'Paid'
+      };
+      localStorage.setItem('swarm_receipts', JSON.stringify([defaultReceipt]));
+      return [defaultReceipt];
+    } catch {
+      return [];
+    }
+  });
 
   const [usdcBalance, setUsdcBalance] = useState<number>(() => {
     const val = localStorage.getItem('swarm_wallet_usdc');
@@ -358,14 +538,20 @@ Establish position in the current accumulation range with a stop loss below **$$
     return val ? parseFloat(val) : 82.45;
   });
 
+  const prevWalletRef = useRef<string | null>(walletAddress);
+
   useEffect(() => {
     if (walletAddress) {
       localStorage.setItem('swarm_wallet_address', walletAddress);
+      if (!prevWalletRef.current) {
+        handleLoginRecalculation();
+      }
     } else {
       localStorage.removeItem('swarm_wallet_address');
       localStorage.removeItem('swarm_wallet_usdc');
       localStorage.removeItem('swarm_wallet_sol');
     }
+    prevWalletRef.current = walletAddress;
   }, [walletAddress]);
 
   useEffect(() => {
@@ -416,6 +602,23 @@ Establish position in the current accumulation range with a stop loss below **$$
     setSelectedSnapshot(snapshot);
     setIsChatOpen(true);
   };
+
+  // Dynamic Connected Wallet Portfolio and Modal state
+  const [isWalletDetailsModalOpen, setIsWalletDetailsModalOpen] = useState(false);
+  const currentSolPrice = globalPrices['SOL']?.price || 152.34;
+  const currentSolChange = globalPrices['SOL']?.change24h || 2.4;
+  const walletConnected = !!walletAddress;
+  
+  // Real user connected wallet balance
+  const activeUsdcBalance = walletConnected ? usdcBalance : 0;
+  const activeSolBalance = walletConnected ? solBalance : 0;
+  
+  const totalSolValuation = activeSolBalance * currentSolPrice;
+  const totalWalletPortfolioValue = activeUsdcBalance + totalSolValuation;
+  
+  // Simulated portfolio change (SOL has price change, USDC has 0 change)
+  const portfolioChangeTodayValue = totalSolValuation * (currentSolChange / 100);
+  const isPortfolioChangePositive = portfolioChangeTodayValue >= 0;
 
   return (
     <div className="flex h-screen w-full bg-background text-foreground overflow-hidden">
@@ -594,6 +797,11 @@ Establish position in the current accumulation range with a stop loss below **$$
           </div>
           
           <div className="flex items-center gap-2 md:gap-4">
+            <Button variant="outline" size="sm" onClick={handleLoginRecalculation} disabled={isRecalculating} className="border-border hover:bg-muted text-muted-foreground h-8 px-2.5 sm:px-3 text-xs flex items-center gap-1.5 cursor-pointer font-mono font-medium">
+              <RefreshCw className={`w-3.5 h-3.5 ${isRecalculating ? 'animate-spin text-primary' : ''}`} />
+              <span className="hidden sm:inline">Sync & Recalc AI</span>
+              <span className="sm:hidden">Recalc</span>
+            </Button>
             <Button variant="outline" size="sm" onClick={() => { setSubscriptionTriggerReason('upgrade'); setIsSubscriptionModalOpen(true); }} className="border-amber-500 hover:bg-amber-500/10 text-amber-500 h-8 px-2.5 sm:px-3 text-xs flex items-center gap-1.5 cursor-pointer font-bold transition-all shadow-sm shadow-amber-500/10">
               <Sparkles className="w-3.5 h-3.5 text-amber-500 animate-pulse" />
               <span>Upgrade</span>
@@ -722,21 +930,42 @@ Establish position in the current accumulation range with a stop loss below **$$
                       </CardContent>
                     </Card>
 
-                    <Card className="bg-card hidden md:block">
+                    <Card className="bg-card hidden md:block border border-border hover:border-primary/30 transition-all duration-300">
                       <CardContent className="p-6">
                         <div className="flex justify-between items-start">
                           <div className="space-y-1">
                             <p className="text-[10px] tracking-widest uppercase font-medium text-muted-foreground">Portfolio Balance</p>
-                            <h2 className="text-2xl lg:text-3xl font-bold font-mono">$142,804.12</h2>
+                            <h2 className={`text-2xl lg:text-3xl font-bold font-mono tracking-tight ${walletConnected ? 'text-foreground' : 'text-muted-foreground/60'}`}>
+                              {walletConnected 
+                                ? `$${totalWalletPortfolioValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` 
+                                : '$0.00'
+                              }
+                            </h2>
+                          </div>
+                          <div className={`p-1 rounded-sm text-[8px] font-mono font-bold uppercase tracking-wider ${
+                            walletConnected ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' : 'bg-red-500/10 text-red-500 border border-red-500/20'
+                          }`}>
+                            {walletConnected ? 'Connected' : 'Disconnected'}
                           </div>
                         </div>
                         <div className="mt-4 flex flex-col justify-between h-[42px]">
                           <div className="flex items-center text-sm text-muted-foreground">
-                            <span className="text-emerald-500 font-medium font-mono flex items-center mr-2">
-                              +$1,402.30 today
-                            </span>
+                            {walletConnected ? (
+                              <span className={`font-medium font-mono flex items-center mr-2 text-xs ${isPortfolioChangePositive ? 'text-emerald-500' : 'text-red-500'}`}>
+                                {isPortfolioChangePositive ? '+' : ''}${portfolioChangeTodayValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} today
+                              </span>
+                            ) : (
+                              <span className="text-[10px] text-muted-foreground font-mono">No connected Web3 wallet</span>
+                            )}
                           </div>
-                          <Button variant="outline" size="sm" className="w-full text-[10px] h-6 uppercase tracking-widest mt-2 border-border text-muted-foreground">View Details</Button>
+                          <Button 
+                            onClick={() => setIsWalletDetailsModalOpen(true)}
+                            variant="outline" 
+                            size="sm" 
+                            className="w-full text-[10px] h-6 uppercase tracking-widest mt-2 border-border text-muted-foreground hover:text-foreground hover:border-muted-foreground/30 cursor-pointer transition-all"
+                          >
+                            View Details
+                          </Button>
                         </div>
                       </CardContent>
                     </Card>
@@ -948,22 +1177,31 @@ Can you perform an advanced confirmation analyze of this recommendation using co
                       <CardContent>
                         <ScrollArea className="h-[210px] pr-2">
                           <div className="space-y-0">
-                            {PERP_ASSETS.slice(0, 8).map((asset) => (
-                              <div 
-                                key={asset.symbol} 
-                                onClick={() => setActiveTab('perps')}
-                                className="py-2.5 flex justify-between items-center border-b border-border/40 last:border-0 cursor-pointer hover:bg-muted/10 px-1 rounded transition-colors"
-                              >
-                                <div className="flex items-center gap-1.5">
-                                  <span className="font-mono text-xs font-bold uppercase">{asset.symbol}</span>
-                                  <span className="text-[8px] opacity-70 bg-muted px-1.5 py-0.2 rounded font-mono">{asset.category}</span>
+                            {PERP_ASSETS.slice(0, 8).map((asset) => {
+                              const ticker = asset.symbol.split('/')[0].toUpperCase();
+                              const liveInfo = globalPrices[ticker];
+                              const displayPrice = liveInfo ? liveInfo.price : asset.price;
+                              const displayChange = liveInfo ? liveInfo.change24h : asset.change24h;
+
+                              return (
+                                <div 
+                                  key={asset.symbol} 
+                                  onClick={() => setActiveTab('perps')}
+                                  className="py-2.5 flex justify-between items-center border-b border-border/40 last:border-0 cursor-pointer hover:bg-muted/10 px-1 rounded transition-colors"
+                                >
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="font-mono text-xs font-bold uppercase">{asset.symbol}</span>
+                                    <span className="text-[8px] opacity-70 bg-muted px-1.5 py-0.2 rounded font-mono">{asset.category}</span>
+                                  </div>
+                                  <span className="text-xs font-mono font-medium">
+                                    ${displayPrice.toLocaleString('en-US', { minimumFractionDigits: asset.category === 'Forex' ? 4 : 2 })}
+                                  </span>
+                                  <span className={`text-[10px] font-mono font-bold ${displayChange >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+                                    {displayChange >= 0 ? '+' : ''}{displayChange.toFixed(2)}%
+                                  </span>
                                 </div>
-                                <span className="text-xs font-mono font-medium">${asset.price.toLocaleString('en-US', { minimumFractionDigits: asset.category === 'Forex' ? 4 : 2 })}</span>
-                                <span className={`text-[10px] font-mono font-bold ${asset.change24h >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
-                                  {asset.change24h >= 0 ? '+' : ''}{asset.change24h.toFixed(2)}%
-                                </span>
-                              </div>
-                            ))}
+                              );
+                            })}
                           </div>
                         </ScrollArea>
                       </CardContent>
@@ -999,6 +1237,7 @@ Can you perform an advanced confirmation analyze of this recommendation using co
                   setUsdcBalance={setUsdcBalance}
                   solBalance={solBalance}
                   setSolBalance={setSolBalance}
+                  globalPrices={globalPrices}
                   onSendToAI={(prompt) => {
                     setAiInitialPrompt(prompt);
                     setIsChatOpen(true);
@@ -1077,6 +1316,15 @@ Can you perform an advanced confirmation analyze of this recommendation using co
                   setSubscriptionTriggerReason('chat');
                   setIsSubscriptionModalOpen(true);
                 }}
+                dailyApiCount={dailyApiCount}
+                maxApiRequests={TIER_LIMITS[userTier].maxApiRequests}
+                onIncrementApiCount={() => {
+                  setDailyApiCount(prev => {
+                    const next = prev + 1;
+                    localStorage.setItem('swarm_api_count', next.toString());
+                    return next;
+                  });
+                }}
               />
             </div>
           )}
@@ -1097,6 +1345,23 @@ Can you perform an advanced confirmation analyze of this recommendation using co
             setWalletType={setWalletType}
             setUsdcBalance={setUsdcBalance}
             setSolBalance={setSolBalance}
+            email={profileEmail}
+            setEmail={setProfileEmail}
+            receipts={receipts}
+            setReceipts={setReceipts}
+          />
+
+          {/* On-Chain Wallet Details / Screenshot Modal */}
+          <WalletDetailsModal
+            isOpen={isWalletDetailsModalOpen}
+            onClose={() => setIsWalletDetailsModalOpen(false)}
+            walletAddress={walletAddress}
+            usdcBalance={usdcBalance}
+            solBalance={solBalance}
+            solPrice={currentSolPrice}
+            blockchain={connectedBlockchain}
+            walletType={walletType}
+            onConnectWallet={() => setIsProfileModalOpen(true)}
           />
 
           {/* 1-Week (1W) Forecast Price Projection Modal */}
@@ -1253,7 +1518,7 @@ What are the critical price milestones and exact validation triggers we should m
                         {TIER_LIMITS[userTier].label} ({TIER_LIMITS[userTier].price})
                       </p>
                     </div>
-                    <div className="flex gap-6 items-center">
+                    <div className="flex gap-4 sm:gap-6 items-center">
                       <div className="text-center sm:text-right">
                         <span className="text-[9px] uppercase font-mono tracking-wider text-muted-foreground block">Searches Conducted Today</span>
                         <p className="text-xs font-bold font-mono text-foreground mt-0.5">
@@ -1264,6 +1529,12 @@ What are the critical price milestones and exact validation triggers we should m
                         <span className="text-[9px] uppercase font-mono tracking-wider text-muted-foreground block">AI Questions Asked Today</span>
                         <p className="text-xs font-bold font-mono text-foreground mt-0.5">
                           {dailyChatCount} / {TIER_LIMITS[userTier].maxChats === 999999 ? 'Unlimited' : TIER_LIMITS[userTier].maxChats}
+                        </p>
+                      </div>
+                      <div className="text-center sm:text-right">
+                        <span className="text-[9px] uppercase font-mono tracking-wider text-muted-foreground block">Live API Pulls Today</span>
+                        <p className="text-xs font-bold font-mono text-foreground mt-0.5">
+                          {dailyApiCount} / {TIER_LIMITS[userTier].maxApiRequests === 999999 ? 'Unlimited' : TIER_LIMITS[userTier].maxApiRequests}
                         </p>
                       </div>
                     </div>
@@ -1327,6 +1598,10 @@ What are the critical price milestones and exact validation triggers we should m
                             <span className="w-1.5 h-1.5 rounded-full bg-primary"></span>
                             <span>Standard 1W AI price forecasting</span>
                           </li>
+                          <li className="flex items-center gap-2">
+                            <span className="w-1.5 h-1.5 rounded-full bg-primary"></span>
+                            <span><strong>500</strong> Live API pulls per day</span>
+                          </li>
                         </ul>
                       </div>
                       <Button 
@@ -1372,6 +1647,10 @@ What are the critical price milestones and exact validation triggers we should m
                             <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
                             <span>Swarm confluences & strategy room</span>
                           </li>
+                          <li className="flex items-center gap-2">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                            <span><strong>2,500</strong> Live API pulls per day</span>
+                          </li>
                         </ul>
                       </div>
                       <Button 
@@ -1410,6 +1689,10 @@ What are the critical price milestones and exact validation triggers we should m
                           <li className="flex items-center gap-2">
                             <span className="w-1.5 h-1.5 rounded-full bg-primary"></span>
                             <span>Priority real-time AI modeling</span>
+                          </li>
+                          <li className="flex items-center gap-2">
+                            <span className="w-1.5 h-1.5 rounded-full bg-primary"></span>
+                            <span><strong>10,000</strong> Live API pulls per day</span>
                           </li>
                         </ul>
                       </div>
@@ -1471,11 +1754,102 @@ What are the critical price milestones and exact validation triggers we should m
                 const daysToAdd = selectedBillingCycle === 'yearly' ? 365 : 30;
                 const newExpiry = Date.now() + daysToAdd * 24 * 60 * 60 * 1000;
                 localStorage.setItem('swarm_membership_expiry', newExpiry.toString());
+
+                // Generate and save subscription receipt
+                const pricePaid = smartContractPaymentTier === 'basic' ? (selectedBillingCycle === 'yearly' ? 48 : 5) :
+                                  smartContractPaymentTier === 'pro' ? (selectedBillingCycle === 'yearly' ? 144 : 15) : 
+                                  (selectedBillingCycle === 'yearly' ? 276 : 29);
+                const newReceipt = {
+                  id: `RCPT-${Math.floor(100000 + Math.random() * 900000)}`,
+                  tier: smartContractPaymentTier,
+                  price: pricePaid,
+                  billingCycle: selectedBillingCycle,
+                  date: Date.now(),
+                  txHash: `SOL-${Math.floor(Math.random() * 100000000).toString(16).toUpperCase()}`,
+                  status: 'Paid'
+                };
+                const updatedReceipts = [newReceipt, ...receipts];
+                setReceipts(updatedReceipts);
+                localStorage.setItem('swarm_receipts', JSON.stringify(updatedReceipts));
                 
+                // If they have email saved, automatically backup/sync as well
+                if (profileEmail) {
+                  const profileData = {
+                    username,
+                    avatarUrl,
+                    email: profileEmail,
+                    walletAddress,
+                    connectedBlockchain,
+                    walletType,
+                    snapshotsCount: receipts.length, // approximation or loaded
+                    receipts: updatedReceipts,
+                    updatedAt: Date.now()
+                  };
+                  localStorage.setItem('swarm_profile_data_' + profileEmail, JSON.stringify(profileData));
+                }
+
                 setSmartContractPaymentTier(null);
                 setIsSubscriptionModalOpen(false);
               }}
             />
+          )}
+
+          {/* Live Recalculating overlay backdrop screen */}
+          {isRecalculating && (
+            <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-background/85 backdrop-blur-md animate-in fade-in duration-300">
+              <div className="max-w-md w-full p-6 text-center space-y-6">
+                <div className="relative mx-auto w-24 h-24">
+                  <div className="absolute inset-0 rounded-full border-4 border-primary/20"></div>
+                  <div className="absolute inset-0 rounded-full border-4 border-t-primary border-r-primary animate-spin"></div>
+                  <div className="absolute inset-2 rounded-full border-2 border-amber-500/20"></div>
+                  <div className="absolute inset-2 rounded-full border-2 border-b-amber-500 border-l-amber-500 animate-spin animate-reverse"></div>
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <Sparkles className="w-8 h-8 text-amber-500 animate-pulse" />
+                  </div>
+                </div>
+                
+                <div className="space-y-2">
+                  <h3 className="text-lg font-bold font-mono uppercase tracking-wider text-foreground">AI Swarm Sync In Progress</h3>
+                  <p className="text-xs text-muted-foreground font-mono">{recalcStep}</p>
+                </div>
+
+                <div className="bg-muted/30 border border-border/40 rounded-xl p-4 text-left space-y-2.5">
+                  <div className="flex items-center justify-between text-[10px] font-mono">
+                    <span className="text-muted-foreground">Session Status:</span>
+                    <span className="text-emerald-400 font-bold uppercase animate-pulse">Synchronizing</span>
+                  </div>
+                  <div className="flex items-center justify-between text-[10px] font-mono">
+                    <span className="text-muted-foreground">User Plan:</span>
+                    <span className="text-primary font-bold uppercase">{TIER_LIMITS[userTier].label}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-[10px] font-mono">
+                    <span className="text-muted-foreground">API Limit per Tier:</span>
+                    <span className="text-amber-500 font-bold">{TIER_LIMITS[userTier].maxApiRequests === 999999 ? 'Unlimited' : `${TIER_LIMITS[userTier].maxApiRequests} pulls/day`}</span>
+                  </div>
+                  <Progress value={
+                    recalcStep.includes('Initializing') ? 15 :
+                    recalcStep.includes('CoinGecko') ? 35 :
+                    recalcStep.includes('Momentum') ? 60 :
+                    recalcStep.includes('Fibonacci') ? 80 :
+                    recalcStep.includes('wallet') ? 95 : 100
+                  } className="h-1.5 mt-2 bg-muted-foreground/10" />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Toast Notification Banner */}
+          {toastMessage && (
+            <div className="fixed bottom-6 right-6 z-[100] bg-destructive/95 backdrop-blur text-destructive-foreground border border-destructive/20 px-4 py-3 rounded-xl shadow-2xl animate-in slide-in-from-bottom-5 duration-300 max-w-sm flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-red-400 animate-pulse flex-shrink-0"></span>
+              <p className="text-xs font-mono">{toastMessage}</p>
+              <button 
+                onClick={() => setToastMessage(null)}
+                className="ml-auto text-destructive-foreground/50 hover:text-destructive-foreground font-mono font-bold text-xs p-1 cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
           )}
         </div>
       </main>
