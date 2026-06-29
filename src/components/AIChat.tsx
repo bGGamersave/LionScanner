@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { GoogleGenAI, Type } from '@google/genai';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -33,6 +34,21 @@ const INITIAL_MESSAGE: Message = {
   text: "Hello! I am the Lions Trading Swarm AI. I can analyze TradingView snapshots using Market Cipher B, Fibonacci retracements, and FVRP. I can also evaluate any Top 300 CoinGecko token to tell you if it's a good time to BUY, SELL, LONG, or SHORT today.\n\nTo better assist you, I have a few clarifying questions about your strategy:\n1. What timeframe do you primarily trade (e.g., 5m, 1H, Daily)?\n2. What is your preferred Risk-to-Reward ratio?\n3. Do you rely on any additional confluence indicators besides Market Cipher B when taking a trade?\n4. Are you predominantly scalping, day trading, or swing trading?"
 };
 
+const getCryptoQuoteDeclaration = {
+  name: "get_crypto_quote",
+  description: "Get the real-time quote/price and 24h stats for a cryptocurrency symbol (e.g., BTC, ETH, SOL). Use this tool to get up-to-date token data to help make buy/sell decisions.",
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      symbol: {
+        type: Type.STRING,
+        description: "The cryptocurrency ticker/symbol to query, e.g., BTC, ETH, SOL"
+      }
+    },
+    required: ["symbol"]
+  }
+};
+
 export default function AIChat({ 
   selectedSnapshot, 
   onClearSnapshot, 
@@ -63,9 +79,22 @@ export default function AIChat({
   const [localImage, setLocalImage] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<'SAVE' | 'SAVED!'>('SAVE');
   const chatFileInputRef = useRef<HTMLInputElement>(null);
+  const [apiKey, setApiKey] = useState<string | null>(null);
 
   // Maintain internal chat history for GoogleGenAI
   const chatHistoryRef = useRef<any[]>([]);
+
+  useEffect(() => {
+    // Fetch the client-side Gemini API key on mount for direct browser calls
+    fetch('/api/gemini/key')
+      .then(res => res.json())
+      .then(data => {
+        if (data.apiKey) {
+          setApiKey(data.apiKey);
+        }
+      })
+      .catch(err => console.error('Failed to load client-side Gemini API key:', err));
+  }, []);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -177,34 +206,90 @@ export default function AIChat({
       // Add to history
       chatHistoryRef.current.push({ role: 'user', parts });
 
-      // Run server-side query to execute function-calling loop and safety protocols
-      const response = await fetch('/api/gemini/chat', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          contents: chatHistoryRef.current
-        })
+      // Direct browser-side call to GoogleGenAI Client as requested
+      let activeKey = apiKey;
+      if (!activeKey) {
+        try {
+          const res = await fetch('/api/gemini/key');
+          const data = await res.json();
+          if (data.apiKey) {
+            activeKey = data.apiKey;
+            setApiKey(data.apiKey);
+          }
+        } catch (e) {
+          console.error("Failed to load Gemini key on-demand:", e);
+        }
+      }
+
+      if (!activeKey) {
+        throw new Error("GEMINI_API_KEY is not configured on the server. Please add it via Settings > Secrets.");
+      }
+
+      const aiClient = new GoogleGenAI({ apiKey: activeKey });
+
+      const aiConfig = {
+        systemInstruction: "You are the Lions Trading Swarm AI. If the user asks about a token in the CoinGecko top 300, LIMIT your response STRICTLY to stating whether it is a good time to BUY, SELL, LONG, or SHORT for the day, with a 1-2 sentence justification based on current market sentiment and any live data you fetched. Be decisive. If the user answers your clarifying questions about their strategy, acknowledge them and tailor future advice. Otherwise, adhere strictly to the prompts and restrictions.",
+        tools: [{ functionDeclarations: [getCryptoQuoteDeclaration] }],
+      };
+
+      // Direct browser side API call for Gemini 3.5 flash
+      let modelResponse = await aiClient.models.generateContent({
+        model: "gemini-3.5-flash",
+        contents: chatHistoryRef.current,
+        config: aiConfig
       });
 
-      const responseTextRaw = await response.text();
-      let responseData: any;
-      try {
-        responseData = JSON.parse(responseTextRaw);
-      } catch (parseErr) {
-        throw new Error(`Server returned non-JSON response (status ${response.status}): ${responseTextRaw.substring(0, 300)}`);
+      // Loop execution for client-side function calling
+      let loopCount = 0;
+      const localContents = [...chatHistoryRef.current];
+
+      while (modelResponse.functionCalls && modelResponse.functionCalls.length > 0 && loopCount < 5) {
+        loopCount++;
+        const functionCall = modelResponse.functionCalls[0];
+        
+        // Add model's request to contents
+        if (modelResponse.candidates?.[0]?.content) {
+          localContents.push(modelResponse.candidates[0].content);
+        }
+
+        let apiResult = {};
+        if (functionCall.name === "get_crypto_quote") {
+          const { symbol } = functionCall.args as any;
+          try {
+            const upperSymbol = symbol.toUpperCase();
+            const res = await fetch(`/api/coingecko/quote?symbol=${upperSymbol}`);
+            if (res.ok) {
+              apiResult = await res.json();
+            } else {
+              apiResult = { error: `Server failed to resolve quote for ${upperSymbol}` };
+            }
+          } catch (err: any) {
+            apiResult = { error: err.message || "Failed to fetch quote from API" };
+          }
+        } else {
+          apiResult = { error: "Unknown function called" };
+        }
+
+        const functionResponsePart = {
+          functionResponse: {
+            name: functionCall.name,
+            response: apiResult
+          }
+        };
+
+        localContents.push({ role: "user", parts: [functionResponsePart] });
+
+        modelResponse = await aiClient.models.generateContent({
+          model: "gemini-3.5-flash",
+          contents: localContents,
+          config: aiConfig
+        });
       }
 
-      if (!response.ok) {
-        throw new Error(responseData.error || "Server failed to respond");
-      }
-      
-      if (responseData.history) {
-        chatHistoryRef.current = responseData.history;
-      }
+      const responseText = modelResponse.text || "I couldn't process that request.";
 
-      const responseText = responseData.text;
+      // Update history
+      chatHistoryRef.current = localContents.concat(modelResponse.candidates?.[0]?.content ? [modelResponse.candidates[0].content] : []);
 
       const aiDetected = detectSymbolInText(responseText);
       if (aiDetected && onSelectSymbol) {
@@ -214,7 +299,7 @@ export default function AIChat({
       setMessages(prev => [...prev, {
         id: (Date.now() + 1).toString(),
         sender: 'ai',
-        text: responseText || "I couldn't process that request."
+        text: responseText
       }]);
 
     } catch (error: any) {

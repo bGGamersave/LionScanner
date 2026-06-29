@@ -140,6 +140,50 @@ export default function App() {
   // Smart Contract Checkout States
   const [smartContractPaymentTier, setSmartContractPaymentTier] = useState<'basic' | 'pro' | 'ultimate' | null>(null);
 
+  // Load or set membership expiry timestamp (for realistic countdown simulation)
+  const [expiry, setExpiry] = useState<number | null>(() => {
+    const saved = localStorage.getItem('swarm_membership_expiry');
+    if (saved) return parseInt(saved, 10);
+    // Initialize to 15 days, 8 hours, 42 minutes from now
+    const val = Date.now() + (15 * 24 * 60 * 60 * 1000) + (8 * 60 * 60 * 1000) + (42 * 60 * 1000);
+    localStorage.setItem('swarm_membership_expiry', val.toString());
+    return val;
+  });
+
+  const [timeRemaining, setTimeRemaining] = useState<{ days: number; hours: number; minutes: number; seconds: number } | null>(null);
+
+  useEffect(() => {
+    const saved = localStorage.getItem('swarm_membership_expiry');
+    if (saved) {
+      setExpiry(parseInt(saved, 10));
+    }
+  }, [userTier]);
+
+  useEffect(() => {
+    if (!userTier || userTier === 'free') {
+      setTimeRemaining(null);
+      return;
+    }
+
+    const interval = setInterval(() => {
+      const savedExpiry = localStorage.getItem('swarm_membership_expiry');
+      const target = savedExpiry ? parseInt(savedExpiry, 10) : expiry;
+      const diff = (target || Date.now()) - Date.now();
+
+      if (diff <= 0) {
+        setTimeRemaining({ days: 0, hours: 0, minutes: 0, seconds: 0 });
+      } else {
+        const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+        const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+        const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+        const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+        setTimeRemaining({ days, hours, minutes, seconds });
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [userTier, expiry]);
+
   // 1W Projection Modal States
   const [projectionAsset, setProjectionAsset] = useState<MarketAsset | null>(null);
   const [isProjectionLoading, setIsProjectionLoading] = useState(false);
@@ -418,6 +462,55 @@ Establish position in the current accumulation range with a stop loss below **$$
               <Camera className="mr-2 h-4 w-4" />
               My Snapshots
             </Button>
+
+            {/* Membership Status Section */}
+            <div className="mt-4 pt-4 border-t border-border/40 px-1 space-y-3">
+              <span className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground block pl-2">Membership Status</span>
+              <div className="bg-muted/30 border border-border/60 rounded-xl p-3 space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className={`w-2 h-2 rounded-full ${userTier === 'free' ? 'bg-muted-foreground' : 'bg-emerald-500 animate-pulse'}`}></span>
+                  <span className="font-mono text-xs font-bold uppercase text-foreground">
+                    {userTier === 'free' ? 'Free Tier' : `${userTier} Plan`}
+                  </span>
+                </div>
+                
+                {userTier !== 'free' && timeRemaining ? (
+                  <p className="text-[10px] text-muted-foreground leading-normal">
+                    Expires in: <strong className="text-foreground font-mono bg-background px-1 py-0.5 rounded ml-0.5">
+                      {timeRemaining.days}d {timeRemaining.hours}h {timeRemaining.minutes}m
+                    </strong>
+                  </p>
+                ) : (
+                  <p className="text-[10px] text-muted-foreground leading-normal">
+                    Unlock full swarm searches, strategy room, and forecasts.
+                  </p>
+                )}
+
+                {userTier !== 'free' ? (
+                  <Button 
+                    size="sm"
+                    onClick={() => {
+                      setSubscriptionTriggerReason('upgrade');
+                      setIsSubscriptionModalOpen(true);
+                    }}
+                    className="w-full bg-amber-500 hover:bg-amber-600 text-black font-mono text-[9px] uppercase h-7 tracking-wider cursor-pointer"
+                  >
+                    Renew / Extend
+                  </Button>
+                ) : (
+                  <Button 
+                    size="sm"
+                    onClick={() => {
+                      setSubscriptionTriggerReason('upgrade');
+                      setIsSubscriptionModalOpen(true);
+                    }}
+                    className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-mono text-[9px] uppercase h-7 tracking-wider cursor-pointer"
+                  >
+                    Upgrade to Premium
+                  </Button>
+                )}
+              </div>
+            </div>
             <Button variant="ghost" className="w-full justify-start text-muted-foreground hover:text-foreground hidden">
               <Users className="mr-2 h-4 w-4" />
               Swarm Intelligence
