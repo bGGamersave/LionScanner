@@ -98,7 +98,7 @@ function renderMarkdownContent(text: string) {
 }
 
 export default function App() {
-  const [isDark, setIsDark] = useState(true);
+  const [isDark, setIsDark] = useState(false);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'perps' | 'snapshots'>('dashboard');
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [selectedSnapshot, setSelectedSnapshot] = useState<SnapshotData | null>(null);
@@ -113,6 +113,15 @@ export default function App() {
   // Subscription and Limit Tracking States
   const [userTier, setUserTier] = useState<'free' | 'basic' | 'pro' | 'ultimate'>(() => {
     return (localStorage.getItem('swarm_user_tier') as any) || 'free';
+  });
+
+  const [analysisTokens, setAnalysisTokens] = useState<number>(() => {
+    const saved = localStorage.getItem('lion_analysis_tokens');
+    if (saved === null) {
+      localStorage.setItem('lion_analysis_tokens', '3');
+      return 3;
+    }
+    return parseInt(saved, 10);
   });
 
   const [dailySearchCount, setDailySearchCount] = useState<number>(() => {
@@ -139,7 +148,15 @@ export default function App() {
 
   const [isSubscriptionModalOpen, setIsSubscriptionModalOpen] = useState(false);
   const [selectedBillingCycle, setSelectedBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
-  const [subscriptionTriggerReason, setSubscriptionTriggerReason] = useState<'search' | 'chat' | 'upgrade'>('upgrade');
+  const [subscriptionTriggerReason, setSubscriptionTriggerReason] = useState<'search' | 'chat' | 'upgrade' | 'tokens'>('upgrade');
+
+  // Active Purchase Product (Premium Pack or Token Pack)
+  const [activePurchaseProduct, setActivePurchaseProduct] = useState<{
+    id: 'basic' | 'pro' | 'ultimate' | 'token_50' | 'token_200' | 'token_500';
+    name: string;
+    price: number;
+    tokens: number;
+  } | null>(null);
 
   // Smart Contract Checkout States
   const [smartContractPaymentTier, setSmartContractPaymentTier] = useState<'basic' | 'pro' | 'ultimate' | null>(null);
@@ -328,6 +345,15 @@ export default function App() {
   };
 
   const handleAssetCheck = async (asset: MarketAsset) => {
+    // GUARD: Token-based restriction like dyor.net
+    if (analysisTokens <= 0) {
+      setSubscriptionTriggerReason('tokens');
+      setIsSubscriptionModalOpen(true);
+      setSearchQuery('');
+      setToastMessage("Insufficient AI Scanner tokens! Purchase a Premium Pack or Token Pack to unlock forecasts.");
+      return;
+    }
+
     const maxAllowed = TIER_LIMITS[userTier].maxSearches;
     if (dailySearchCount >= maxAllowed) {
       setSubscriptionTriggerReason('search');
@@ -342,6 +368,13 @@ export default function App() {
       setToastMessage(`Daily API limit exceeded (${dailyApiCount}/${apiLimit} pulls) for your ${TIER_LIMITS[userTier].label}. Upgrade to unlock higher allowances.`);
       return;
     }
+
+    // Consume 1 token on execution
+    setAnalysisTokens(prev => {
+      const next = Math.max(0, prev - 1);
+      localStorage.setItem('lion_analysis_tokens', next.toString());
+      return next;
+    });
 
     incrementSearchCount();
     setActiveSymbol(asset.symbol);
@@ -731,6 +764,14 @@ Establish position in the current accumulation range with a stop loss below **$$
                   </p>
                 )}
 
+                {/* AI Scanner Token indicator */}
+                <div className="flex items-center justify-between border-t border-border/40 pt-2 mt-1.5 pb-1">
+                  <span className="text-[10px] text-muted-foreground font-mono uppercase">AI Scanner Tokens:</span>
+                  <Badge variant="outline" className="font-mono text-[9px] bg-orange-500/10 text-orange-500 border-orange-500/20 font-bold">
+                    {analysisTokens} Left
+                  </Badge>
+                </div>
+
                 {userTier !== 'free' ? (
                   <Button 
                     size="sm"
@@ -738,7 +779,7 @@ Establish position in the current accumulation range with a stop loss below **$$
                       setSubscriptionTriggerReason('upgrade');
                       setIsSubscriptionModalOpen(true);
                     }}
-                    className="w-full bg-amber-500 hover:bg-amber-600 text-black font-mono text-[9px] uppercase h-7 tracking-wider cursor-pointer"
+                    className="w-full bg-orange-500 hover:bg-orange-600 text-black font-mono text-[9px] uppercase h-7 tracking-wider cursor-pointer font-bold"
                   >
                     Renew / Extend
                   </Button>
@@ -749,7 +790,7 @@ Establish position in the current accumulation range with a stop loss below **$$
                       setSubscriptionTriggerReason('upgrade');
                       setIsSubscriptionModalOpen(true);
                     }}
-                    className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-mono text-[9px] uppercase h-7 tracking-wider cursor-pointer"
+                    className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-mono text-[9px] uppercase h-7 tracking-wider cursor-pointer font-bold"
                   >
                     Upgrade to Premium
                   </Button>
@@ -1744,6 +1785,12 @@ What are the critical price milestones and exact validation triggers we should m
                       <p className="text-xs text-muted-foreground">Free tier allows up to 2 AI chat questions per day. Upgrade below to continuous interrogations.</p>
                     </div>
                   )}
+                  {subscriptionTriggerReason === 'tokens' && (
+                    <div className="bg-orange-500/10 border border-orange-500/20 p-4 rounded-xl text-center space-y-1">
+                      <h4 className="text-sm font-bold font-mono text-orange-500 uppercase">0 AI Scanner Tokens Remaining!</h4>
+                      <p className="text-xs text-muted-foreground">Generating a 1-Week Forecast requires 1 Token. Purchase a Premium Pack or Refill Pack below to run unlimited queries.</p>
+                    </div>
+                  )}
 
                   {/* Active Stats Dashboard */}
                   <div className="bg-background/45 border border-border/70 rounded-xl p-4 md:p-5 flex flex-col sm:flex-row justify-between items-center gap-4 text-left">
@@ -1776,169 +1823,198 @@ What are the critical price milestones and exact validation triggers we should m
                     </div>
                   </div>
 
-                  {/* Billing Cycle Toggle */}
-                  <div className="flex justify-center items-center gap-3 bg-muted/20 p-1.5 rounded-xl border border-border/40 max-w-[280px] mx-auto">
-                    <button
-                      onClick={() => setSelectedBillingCycle('monthly')}
-                      className={`px-4 py-1.5 rounded-lg text-xs font-mono uppercase font-bold tracking-wider cursor-pointer transition-all ${
-                        selectedBillingCycle === 'monthly'
-                          ? 'bg-primary text-primary-foreground shadow-sm'
-                          : 'text-muted-foreground hover:text-foreground'
-                      }`}
-                    >
-                      Monthly
-                    </button>
-                    <button
-                      onClick={() => setSelectedBillingCycle('yearly')}
-                      className={`px-4 py-1.5 rounded-lg text-xs font-mono uppercase font-bold tracking-wider cursor-pointer transition-all flex items-center gap-1.5 ${
-                        selectedBillingCycle === 'yearly'
-                          ? 'bg-amber-500 text-black shadow-sm'
-                          : 'text-muted-foreground hover:text-foreground'
-                      }`}
-                    >
-                      Yearly
-                      <span className="bg-emerald-500 text-black text-[8px] font-sans font-extrabold px-1.5 py-0.5 rounded-full uppercase leading-none">
-                        Save 20%
-                      </span>
-                    </button>
+                  {/* Section 1: Premium Access Packs */}
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2 pb-1 border-b border-border/40">
+                      <span className="w-1.5 h-3.5 rounded-full bg-primary"></span>
+                      <h4 className="text-xs font-bold font-mono uppercase tracking-wider text-foreground">Premium Duration Packs (Unlocks Scanning Tier + Tokens)</h4>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                      {/* 30-Day Premium Pack */}
+                      <div className={`border rounded-xl p-5 flex flex-col justify-between space-y-5 bg-card relative transition-all ${
+                        userTier === 'basic' ? 'ring-2 ring-primary border-transparent shadow-sm' : 'border-border hover:border-border/80'
+                      }`}>
+                        <div className="space-y-3">
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <span className="text-[10px] uppercase font-mono tracking-wider text-muted-foreground font-bold block">30 Days</span>
+                              <h4 className="text-base font-bold font-mono text-foreground">Premium Pack</h4>
+                            </div>
+                            <span className="bg-primary/15 text-primary text-[9px] font-mono font-bold px-2 py-0.5 rounded-full uppercase">
+                              +30 Tokens
+                            </span>
+                          </div>
+                          <div className="text-2xl font-black font-mono text-foreground">
+                            $10.00
+                          </div>
+                          <ul className="space-y-2 font-sans text-[11px] text-muted-foreground border-t border-border/40 pt-3">
+                            <li className="flex items-center gap-2">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                              <span><strong>30 Days</strong> Basic scanner access</span>
+                            </li>
+                            <li className="flex items-center gap-2">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                              <span><strong>30 AI Scanner Tokens</strong> credited</span>
+                            </li>
+                            <li className="flex items-center gap-2">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                              <span>Standard local backups & sync</span>
+                            </li>
+                          </ul>
+                        </div>
+                        <Button 
+                          onClick={() => setActivePurchaseProduct({ id: 'basic', name: '30-Day Premium Pack', price: 10, tokens: 30 })}
+                          className="w-full bg-primary hover:bg-primary/95 text-white font-mono text-xs uppercase h-9 tracking-wider cursor-pointer"
+                        >
+                          Select 30-Day
+                        </Button>
+                      </div>
+
+                      {/* 120-Day Premium Pack */}
+                      <div className={`border rounded-xl p-5 flex flex-col justify-between space-y-5 bg-card relative transition-all shadow-md ${
+                        userTier === 'pro' 
+                          ? 'ring-2 ring-primary border-transparent' 
+                          : 'border-orange-500/50 hover:border-orange-500 bg-gradient-to-b from-card to-orange-500/5'
+                      }`}>
+                        <div className="absolute -top-2.5 right-4 bg-orange-500 text-black text-[8px] uppercase font-black font-mono tracking-wider px-2 py-0.5 rounded-md shadow-sm">
+                          Best Choice
+                        </div>
+                        <div className="space-y-3">
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <span className="text-[10px] uppercase font-mono tracking-wider text-orange-500 font-bold block">120 Days</span>
+                              <h4 className="text-base font-bold font-mono text-foreground">Premium Pack</h4>
+                            </div>
+                            <span className="bg-emerald-500 text-black text-[9px] font-mono font-extrabold px-2 py-0.5 rounded-full uppercase">
+                              +120 Tokens
+                            </span>
+                          </div>
+                          <div className="text-2xl font-black font-mono text-foreground">
+                            $25.00
+                          </div>
+                          <ul className="space-y-2 font-sans text-[11px] text-muted-foreground border-t border-border/40 pt-3">
+                            <li className="flex items-center gap-2">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                              <span><strong>120 Days</strong> Pro scanner features</span>
+                            </li>
+                            <li className="flex items-center gap-2">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                              <span><strong>120 AI Scanner Tokens</strong> credited</span>
+                            </li>
+                            <li className="flex items-center gap-2">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                              <span>Unlocks <strong>Interactive Charts</strong></span>
+                            </li>
+                          </ul>
+                        </div>
+                        <Button 
+                          onClick={() => setActivePurchaseProduct({ id: 'pro', name: '120-Day Premium Pack', price: 25, tokens: 120 })}
+                          className="w-full bg-orange-500 hover:bg-orange-600 text-black font-mono text-xs uppercase h-9 tracking-wider cursor-pointer font-bold"
+                        >
+                          Select 120-Day
+                        </Button>
+                      </div>
+
+                      {/* 360-Day Premium Pack */}
+                      <div className={`border rounded-xl p-5 flex flex-col justify-between space-y-5 bg-card relative transition-all ${
+                        userTier === 'ultimate' ? 'ring-2 ring-primary border-transparent' : 'border-border hover:border-border/80'
+                      }`}>
+                        <div className="space-y-3">
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <span className="text-[10px] uppercase font-mono tracking-wider text-muted-foreground font-bold block">360 Days</span>
+                              <h4 className="text-base font-bold font-mono text-foreground">Ultimate Pack</h4>
+                            </div>
+                            <span className="bg-primary/15 text-primary text-[9px] font-mono font-bold px-2 py-0.5 rounded-full uppercase">
+                              +360 Tokens
+                            </span>
+                          </div>
+                          <div className="text-2xl font-black font-mono text-foreground">
+                            $60.00
+                          </div>
+                          <ul className="space-y-2 font-sans text-[11px] text-muted-foreground border-t border-border/40 pt-3">
+                            <li className="flex items-center gap-2">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                              <span><strong>360 Days</strong> Ultimate scanner features</span>
+                            </li>
+                            <li className="flex items-center gap-2">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                              <span><strong>360 AI Scanner Tokens</strong> credited</span>
+                            </li>
+                            <li className="flex items-center gap-2">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                              <span><strong>100x Max Leverage</strong> perps limit</span>
+                            </li>
+                          </ul>
+                        </div>
+                        <Button 
+                          onClick={() => setActivePurchaseProduct({ id: 'ultimate', name: '360-Day Premium Pack', price: 60, tokens: 360 })}
+                          className="w-full bg-primary hover:bg-primary/95 text-white font-mono text-xs uppercase h-9 tracking-wider cursor-pointer"
+                        >
+                          Select 360-Day
+                        </Button>
+                      </div>
+                    </div>
                   </div>
 
-                  {/* Three Tiers Side-by-Side */}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-2">
-                    {/* Basic Plan */}
-                    <div className={`border rounded-2xl p-5 flex flex-col justify-between space-y-6 bg-card transition-all ${
-                      userTier === 'basic' ? 'ring-2 ring-primary border-transparent' : 'border-border hover:border-border/80'
-                    }`}>
-                      <div className="space-y-4">
-                        <div className="space-y-1.5">
-                          <span className="text-[10px] uppercase font-mono tracking-wider text-primary font-bold">Basic Tier</span>
-                          {selectedBillingCycle === 'yearly' ? (
-                            <div>
-                              <h4 className="text-2xl font-bold font-mono text-foreground">$48<span className="text-xs font-sans text-muted-foreground">/yr</span></h4>
-                              <p className="text-[10px] text-muted-foreground mt-0.5 font-mono">Equivalent to $4.00/mo</p>
-                            </div>
-                          ) : (
-                            <h4 className="text-2xl font-bold font-mono text-foreground">$5<span className="text-xs font-sans text-muted-foreground">/mo</span></h4>
-                          )}
-                        </div>
-                        <ul className="space-y-3 font-sans text-xs text-muted-foreground border-t border-border/40 pt-4">
-                          <li className="flex items-center gap-2">
-                            <span className="w-1.5 h-1.5 rounded-full bg-primary"></span>
-                            <span><strong>10</strong> asset searches per day</span>
-                          </li>
-                          <li className="flex items-center gap-2">
-                            <span className="w-1.5 h-1.5 rounded-full bg-primary"></span>
-                            <span><strong>10</strong> AI chat questions per day</span>
-                          </li>
-                          <li className="flex items-center gap-2">
-                            <span className="w-1.5 h-1.5 rounded-full bg-primary"></span>
-                            <span>Unlocks <strong>Live Signals Feed</strong></span>
-                          </li>
-                          <li className="flex items-center gap-2">
-                            <span className="w-1.5 h-1.5 rounded-full bg-primary"></span>
-                            <span>Standard local profile data synchronization</span>
-                          </li>
-                        </ul>
-                      </div>
-                      <Button 
-                        onClick={() => handleUpgradeTier('basic')}
-                        variant={userTier === 'basic' ? 'outline' : 'default'}
-                        className="w-full font-mono text-xs uppercase h-9 tracking-wider cursor-pointer"
-                      >
-                        {userTier === 'basic' ? 'Current Plan' : 'Select Basic'}
-                      </Button>
+                  {/* Section 2: AI Scanner Token Refills */}
+                  <div className="space-y-4 pt-1">
+                    <div className="flex items-center gap-2 pb-1 border-b border-border/40">
+                      <span className="w-1.5 h-3.5 rounded-full bg-emerald-500"></span>
+                      <h4 className="text-xs font-bold font-mono uppercase tracking-wider text-foreground">Direct AI Scanner Token Refills</h4>
                     </div>
 
-                    {/* Pro Plan */}
-                    <div className={`border rounded-2xl p-5 flex flex-col justify-between space-y-6 bg-card relative transition-all shadow-lg ${
-                      userTier === 'pro' 
-                        ? 'ring-2 ring-primary border-transparent shadow-primary/10' 
-                        : 'border-amber-500/50 hover:border-amber-500 bg-gradient-to-b from-card to-amber-500/5 shadow-amber-500/5'
-                    }`}>
-                      <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-amber-500 text-black text-[9px] uppercase font-bold font-mono tracking-widest px-3 py-1 rounded-full shadow-md">
-                        Best Value
-                      </div>
-                      <div className="space-y-4">
-                        <div className="space-y-1.5 mt-2">
-                          <span className="text-[10px] uppercase font-mono tracking-wider text-amber-500 font-bold">Pro Tier</span>
-                          {selectedBillingCycle === 'yearly' ? (
-                            <div>
-                              <h4 className="text-2xl font-bold font-mono text-foreground">$144<span className="text-xs font-sans text-muted-foreground">/yr</span></h4>
-                              <p className="text-[10px] text-muted-foreground mt-0.5 font-mono">Equivalent to $12.00/mo</p>
-                            </div>
-                          ) : (
-                            <h4 className="text-2xl font-bold font-mono text-foreground">$15<span className="text-xs font-sans text-muted-foreground">/mo</span></h4>
-                          )}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                      {/* 50 Tokens */}
+                      <div className="border border-border/70 rounded-xl p-4 flex flex-col justify-between space-y-4 bg-muted/20 hover:border-border transition-all">
+                        <div className="space-y-1">
+                          <span className="text-[9px] font-mono uppercase tracking-wider text-muted-foreground block">Refill Pack A</span>
+                          <h5 className="text-sm font-bold font-mono text-foreground">50 AI Scanner Tokens</h5>
+                          <p className="text-[10px] text-muted-foreground">Perfect for basic technical checks.</p>
+                          <p className="text-base font-black font-mono text-foreground mt-2">$10.00</p>
                         </div>
-                        <ul className="space-y-3 font-sans text-xs text-muted-foreground border-t border-border/40 pt-4">
-                          <li className="flex items-center gap-2">
-                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
-                            <span className="text-foreground"><strong>30</strong> asset searches per day</span>
-                          </li>
-                          <li className="flex items-center gap-2">
-                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
-                            <span className="text-foreground"><strong>20</strong> AI chat questions per day</span>
-                          </li>
-                          <li className="flex items-center gap-2">
-                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
-                            <span className="text-foreground">Unlocks <strong>Perps Terminal</strong> (25x Leverage limit)</span>
-                          </li>
-                          <li className="flex items-center gap-2">
-                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
-                            <span className="text-foreground">Unlocks <strong>Interactive Charts</strong> & Save custom markups</span>
-                          </li>
-                        </ul>
+                        <Button 
+                          onClick={() => setActivePurchaseProduct({ id: 'token_50', name: '50 AI Scanner Tokens', price: 10, tokens: 50 })}
+                          variant="outline"
+                          className="w-full font-mono text-xs uppercase h-8 tracking-wider cursor-pointer border-primary/30 hover:border-primary text-foreground"
+                        >
+                          Buy 50 Tokens
+                        </Button>
                       </div>
-                      <Button 
-                        onClick={() => handleUpgradeTier('pro')}
-                        className="w-full bg-amber-500 hover:bg-amber-600 text-black font-mono text-xs uppercase h-9 tracking-wider cursor-pointer"
-                      >
-                        {userTier === 'pro' ? 'Current Plan' : 'Select Pro'}
-                      </Button>
-                    </div>
 
-                    {/* Ultimate Plan */}
-                    <div className={`border rounded-2xl p-5 flex flex-col justify-between space-y-6 bg-card transition-all ${
-                      userTier === 'ultimate' ? 'ring-2 ring-primary border-transparent' : 'border-border hover:border-border/80'
-                    }`}>
-                      <div className="space-y-4">
-                        <div className="space-y-1.5">
-                          <span className="text-[10px] uppercase font-mono tracking-wider text-primary font-bold">Ultimate Tier</span>
-                          {selectedBillingCycle === 'yearly' ? (
-                            <div>
-                              <h4 className="text-2xl font-bold font-mono text-foreground">$276<span className="text-xs font-sans text-muted-foreground">/yr</span></h4>
-                              <p className="text-[10px] text-muted-foreground mt-0.5 font-mono">Equivalent to $23.00/mo</p>
-                            </div>
-                          ) : (
-                            <h4 className="text-2xl font-bold font-mono text-foreground">$29<span className="text-xs font-sans text-muted-foreground">/mo</span></h4>
-                          )}
+                      {/* 200 Tokens */}
+                      <div className="border border-orange-500/25 rounded-xl p-4 flex flex-col justify-between space-y-4 bg-orange-500/[0.02] hover:border-orange-500/50 transition-all">
+                        <div className="space-y-1">
+                          <span className="text-[9px] font-mono uppercase tracking-wider text-orange-500 block font-bold">Refill Pack B</span>
+                          <h5 className="text-sm font-bold font-mono text-foreground">200 AI Scanner Tokens</h5>
+                          <p className="text-[10px] text-muted-foreground">Best value for everyday trading.</p>
+                          <p className="text-base font-black font-mono text-foreground mt-2">$30.00</p>
                         </div>
-                        <ul className="space-y-3 font-sans text-xs text-muted-foreground border-t border-border/40 pt-4">
-                          <li className="flex items-center gap-2">
-                            <span className="w-1.5 h-1.5 rounded-full bg-primary"></span>
-                            <span><strong>50</strong> asset searches per day</span>
-                          </li>
-                          <li className="flex items-center gap-2">
-                            <span className="w-1.5 h-1.5 rounded-full bg-primary"></span>
-                            <span className="text-foreground"><strong>Unlimited</strong> AI chat questions</span>
-                          </li>
-                          <li className="flex items-center gap-2">
-                            <span className="w-1.5 h-1.5 rounded-full bg-primary"></span>
-                            <span>Unlocks <strong>100x Max Leverage</strong> on Perps Terminal</span>
-                          </li>
-                          <li className="flex items-center gap-2">
-                            <span className="w-1.5 h-1.5 rounded-full bg-primary"></span>
-                            <span className="text-foreground">Unlocks <strong>Lions Swarm AI 1W Forecast Engine</strong></span>
-                          </li>
-                        </ul>
+                        <Button 
+                          onClick={() => setActivePurchaseProduct({ id: 'token_200', name: '200 AI Scanner Tokens', price: 30, tokens: 200 })}
+                          className="w-full bg-orange-500 hover:bg-orange-600 text-black font-mono text-xs uppercase h-8 tracking-wider cursor-pointer font-bold"
+                        >
+                          Buy 200 Tokens
+                        </Button>
                       </div>
-                      <Button 
-                        onClick={() => handleUpgradeTier('ultimate')}
-                        variant={userTier === 'ultimate' ? 'outline' : 'default'}
-                        className="w-full font-mono text-xs uppercase h-9 tracking-wider cursor-pointer"
-                      >
-                        {userTier === 'ultimate' ? 'Current Plan' : 'Select Ultimate'}
-                      </Button>
+
+                      {/* 500 Tokens */}
+                      <div className="border border-border/70 rounded-xl p-4 flex flex-col justify-between space-y-4 bg-muted/20 hover:border-border transition-all">
+                        <div className="space-y-1">
+                          <span className="text-[9px] font-mono uppercase tracking-wider text-muted-foreground block">Refill Pack C</span>
+                          <h5 className="text-sm font-bold font-mono text-foreground">500 AI Scanner Tokens</h5>
+                          <p className="text-[10px] text-emerald-500 font-semibold">Bulk discount tier.</p>
+                          <p className="text-base font-black font-mono text-foreground mt-2">$50.00</p>
+                        </div>
+                        <Button 
+                          onClick={() => setActivePurchaseProduct({ id: 'token_500', name: '500 AI Scanner Tokens', price: 50, tokens: 500 })}
+                          variant="outline"
+                          className="w-full font-mono text-xs uppercase h-8 tracking-wider cursor-pointer border-emerald-500/30 hover:border-emerald-500 text-foreground"
+                        >
+                          Buy 500 Tokens
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1957,19 +2033,16 @@ What are the critical price milestones and exact validation triggers we should m
           )}
 
           {/* Smart Contract Web3 Payment Modal */}
-          {smartContractPaymentTier && (
+          {activePurchaseProduct && (
             <SmartContractPayment
-              isOpen={!!smartContractPaymentTier}
-              onClose={() => setSmartContractPaymentTier(null)}
-              tier={smartContractPaymentTier}
-              price={
-                smartContractPaymentTier === 'basic' ? (selectedBillingCycle === 'yearly' ? 48 : 5) :
-                smartContractPaymentTier === 'pro' ? (selectedBillingCycle === 'yearly' ? 144 : 15) : 
-                (selectedBillingCycle === 'yearly' ? 276 : 29)
-              }
+              isOpen={!!activePurchaseProduct}
+              onClose={() => setActivePurchaseProduct(null)}
+              tier={activePurchaseProduct.id}
+              price={activePurchaseProduct.price}
+              packName={activePurchaseProduct.name}
               walletAddress={walletAddress}
               onConnectWallet={() => {
-                setSmartContractPaymentTier(null);
+                setActivePurchaseProduct(null);
                 setIsProfileModalOpen(true);
               }}
               usdcBalance={usdcBalance}
@@ -1983,23 +2056,32 @@ What are the critical price milestones and exact validation triggers we should m
                 localStorage.setItem('swarm_wallet_sol', newBal.toString());
               }}
               onSuccess={() => {
-                setUserTier(smartContractPaymentTier);
-                localStorage.setItem('swarm_user_tier', smartContractPaymentTier);
-                
-                // Calculate and store membership expiration
-                const daysToAdd = selectedBillingCycle === 'yearly' ? 365 : 30;
-                const newExpiry = Date.now() + daysToAdd * 24 * 60 * 60 * 1000;
-                localStorage.setItem('swarm_membership_expiry', newExpiry.toString());
+                // If it is a premium tier pack:
+                if (['basic', 'pro', 'ultimate'].includes(activePurchaseProduct.id)) {
+                  const targetTier = activePurchaseProduct.id as 'basic' | 'pro' | 'ultimate';
+                  setUserTier(targetTier);
+                  localStorage.setItem('swarm_user_tier', targetTier);
+
+                  // Calculate and store membership expiration
+                  const daysToAdd = activePurchaseProduct.id === 'ultimate' ? 360 : activePurchaseProduct.id === 'pro' ? 120 : 30;
+                  const newExpiry = Date.now() + daysToAdd * 24 * 60 * 60 * 1000;
+                  localStorage.setItem('swarm_membership_expiry', newExpiry.toString());
+                }
+
+                // Credit the purchased analysis tokens
+                const addedTokens = activePurchaseProduct.tokens;
+                setAnalysisTokens(prev => {
+                  const next = prev + addedTokens;
+                  localStorage.setItem('lion_analysis_tokens', next.toString());
+                  return next;
+                });
 
                 // Generate and save subscription receipt
-                const pricePaid = smartContractPaymentTier === 'basic' ? (selectedBillingCycle === 'yearly' ? 48 : 5) :
-                                  smartContractPaymentTier === 'pro' ? (selectedBillingCycle === 'yearly' ? 144 : 15) : 
-                                  (selectedBillingCycle === 'yearly' ? 276 : 29);
                 const newReceipt = {
                   id: `RCPT-${Math.floor(100000 + Math.random() * 900000)}`,
-                  tier: smartContractPaymentTier,
-                  price: pricePaid,
-                  billingCycle: selectedBillingCycle,
+                  tier: activePurchaseProduct.id,
+                  price: activePurchaseProduct.price,
+                  billingCycle: activePurchaseProduct.tokens > 0 ? `+${activePurchaseProduct.tokens} Tokens` : 'Refill',
                   date: Date.now(),
                   txHash: `SOL-${Math.floor(Math.random() * 100000000).toString(16).toUpperCase()}`,
                   status: 'Paid'
@@ -2024,7 +2106,8 @@ What are the critical price milestones and exact validation triggers we should m
                   localStorage.setItem('swarm_profile_data_' + profileEmail, JSON.stringify(profileData));
                 }
 
-                setSmartContractPaymentTier(null);
+                setToastMessage(`Success! Purchased ${activePurchaseProduct.name} successfully.`);
+                setActivePurchaseProduct(null);
                 setIsSubscriptionModalOpen(false);
               }}
             />

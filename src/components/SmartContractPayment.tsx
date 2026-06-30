@@ -20,8 +20,9 @@ import { Separator } from '@/components/ui/separator';
 interface SmartContractPaymentProps {
   isOpen: boolean;
   onClose: () => void;
-  tier: 'basic' | 'pro' | 'ultimate';
+  tier: 'basic' | 'pro' | 'ultimate' | 'token_50' | 'token_200' | 'token_500';
   price: number;
+  packName: string;
   walletAddress: string | null;
   onConnectWallet: () => void;
   usdcBalance: number;
@@ -36,6 +37,7 @@ export default function SmartContractPayment({
   onClose,
   tier,
   price,
+  packName,
   walletAddress,
   onConnectWallet,
   usdcBalance,
@@ -190,6 +192,10 @@ export default function SmartContractPayment({
                   <span className="text-orange-400 font-bold">transferWithLiquiditySwap</span>
                 </div>
                 <div className="flex justify-between">
+                  <span className="text-muted-foreground">Product Selected:</span>
+                  <span className="text-foreground font-bold">{packName}</span>
+                </div>
+                <div className="flex justify-between">
                   <span className="text-muted-foreground">Source Asset:</span>
                   <span className="text-foreground font-bold">{paymentAsset} (Solana)</span>
                 </div>
@@ -211,7 +217,7 @@ export default function SmartContractPayment({
               </div>
               <div className="space-y-1 text-center">
                 <h4 className="text-sm font-bold font-mono text-emerald-400 uppercase tracking-wide">Transaction Confirmed!</h4>
-                <p className="text-xs text-muted-foreground">The Lion Scanner AI membership activated successfully.</p>
+                <p className="text-xs text-muted-foreground">{packName} has been activated & credited to your profile!</p>
               </div>
 
               <div className="w-full bg-muted/40 p-4 rounded-xl border border-border/60 text-xs font-mono space-y-2 max-w-md">
