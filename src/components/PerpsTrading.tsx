@@ -17,7 +17,8 @@ import {
   RotateCcw,
   Sparkles,
   ArrowRightLeft,
-  History
+  History,
+  Lock
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -55,6 +56,8 @@ interface PerpsTradingProps {
   setSolBalance: (balance: number | ((prev: number) => number)) => void;
   onSendToAI: (prompt: string) => void;
   globalPrices?: Record<string, { price: number; change24h: number; volume24h?: number; high24h?: number; low24h?: number; marketCap?: number }>;
+  userTier?: 'free' | 'basic' | 'pro' | 'ultimate';
+  onTriggerUpgrade?: () => void;
 }
 
 interface Position {
@@ -81,7 +84,9 @@ export default function PerpsTrading({
   solBalance,
   setSolBalance,
   onSendToAI,
-  globalPrices = {}
+  globalPrices = {},
+  userTier = 'free',
+  onTriggerUpgrade
 }: PerpsTradingProps) {
   // Navigation & filtering states
   const [selectedCategory, setSelectedCategory] = useState<'All' | 'Crypto' | 'Stocks' | 'Commodities' | 'Forex'>('All');
@@ -98,6 +103,13 @@ export default function PerpsTrading({
   const [limitPriceInput, setLimitPriceInput] = useState<string>('');
   const [marginInput, setMarginInput] = useState<string>('500');
   const [leverage, setLeverage] = useState<number>(10);
+  
+  useEffect(() => {
+    const maxLev = userTier === 'free' || userTier === 'basic' ? 5 : userTier === 'pro' ? 25 : 100;
+    if (leverage > maxLev) {
+      setLeverage(maxLev);
+    }
+  }, [userTier, leverage]);
   
   // Transaction Confirmation Popup State
   const [showSignPopup, setShowSignPopup] = useState(false);
@@ -733,7 +745,26 @@ export default function PerpsTrading({
               </div>
             </CardHeader>
             <CardContent className="flex-1 p-0 pb-0 overflow-hidden relative min-h-[550px]">
-              <Chart symbol={selectedAsset.tvSymbol} interval="D" height={550} />
+              <div className={(userTier === 'free' || userTier === 'basic') ? 'pointer-events-none opacity-25 blur-[3px] h-full w-full' : 'h-full w-full'}>
+                <Chart symbol={selectedAsset.tvSymbol} interval="D" height={550} />
+              </div>
+              {(userTier === 'free' || userTier === 'basic') && (
+                <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-background/70 backdrop-blur-md p-6 text-center">
+                  <div className="p-3 bg-primary/10 rounded-full border border-primary/20 mb-4 animate-bounce">
+                    <Lock className="w-8 h-8 text-primary" />
+                  </div>
+                  <h3 className="text-base font-bold font-mono text-foreground uppercase tracking-wider">Perps Live Chart Locked</h3>
+                  <p className="text-xs text-muted-foreground max-w-xs mt-1.5 mb-5 leading-relaxed">
+                    Real-time advanced asset tracking is a Pro-tier exclusive. Upgrade to access play charts and full leverage order terminals.
+                  </p>
+                  <Button 
+                    onClick={onTriggerUpgrade}
+                    className="bg-primary hover:bg-primary/90 text-primary-foreground font-mono text-[10px] uppercase tracking-wider px-4 py-1.5 rounded-lg cursor-pointer transition-all shadow-sm shadow-primary/10"
+                  >
+                    Upgrade Now
+                  </Button>
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>
@@ -850,7 +881,7 @@ export default function PerpsTrading({
                   <input
                     type="range"
                     min="2"
-                    max="100"
+                    max={userTier === 'free' || userTier === 'basic' ? 5 : userTier === 'pro' ? 25 : 100}
                     step="1"
                     value={leverage}
                     onChange={(e) => setLeverage(parseInt(e.target.value))}
@@ -858,12 +889,23 @@ export default function PerpsTrading({
                   />
                   <div className="flex justify-between text-[8px] text-muted-foreground font-mono leading-none pt-0.5">
                     <span>2x</span>
-                    <span>20x</span>
-                    <span>50x</span>
-                    <span>100x Max</span>
+                    <span>{userTier === 'free' || userTier === 'basic' ? '5x Max (Basic Limit)' : userTier === 'pro' ? '25x Max (Pro Limit)' : '100x Max (Ultimate)'}</span>
                   </div>
 
-                  {leverage >= 25 && (
+                  {userTier === 'pro' && leverage === 25 && (
+                    <div className="flex items-center justify-between text-[8.5px] font-mono bg-amber-500/5 border border-amber-500/20 p-2 rounded mt-1.5 leading-tight text-amber-500">
+                      <span>Pro limit is 25x.</span>
+                      <button 
+                        type="button"
+                        onClick={onTriggerUpgrade}
+                        className="underline font-bold hover:text-amber-400 cursor-pointer"
+                      >
+                        Unlock 100x
+                      </button>
+                    </div>
+                  )}
+
+                  {leverage >= 25 && userTier === 'ultimate' && (
                     <div className="flex items-center gap-1.5 text-yellow-500/90 text-[8.5px] font-mono bg-yellow-500/5 border border-yellow-500/20 p-2 rounded mt-1.5 leading-tight">
                       <AlertTriangle className="w-3 h-3 shrink-0" />
                       <span>Warning: High leverage ({leverage}x) increases liquidation risk substantially. Check margin zones carefully.</span>
@@ -1197,7 +1239,7 @@ Review current momentum, liquidity zones, and Market Cipher structures on the ch
           <Card className="bg-card h-full flex flex-col min-h-[300px]">
             <CardHeader className="pb-3 border-b border-border/40">
               <CardTitle className="text-xs uppercase tracking-widest text-muted-foreground font-sans flex items-center justify-between">
-                <span>Lions Swarm Pro Signals</span>
+                <span>The Lion Scanner Pro Signals</span>
                 <span className="relative flex h-2 w-2">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
@@ -1335,7 +1377,7 @@ Review current momentum, liquidity zones, and Market Cipher structures on the ch
                 <div className="space-y-1">
                   <h4 className="text-sm font-semibold text-white">Connect Solana Wallet</h4>
                   <p className="text-xs text-gray-400 leading-normal max-w-[270px] mx-auto">
-                    Lions Trading Swarm requests permission to view wallet addresses, trigger on-chain margin lockups and sign perp contracts.
+                    The Lion Scanner requests permission to view wallet addresses, trigger on-chain margin lockups and sign perp contracts.
                   </p>
                 </div>
               </div>

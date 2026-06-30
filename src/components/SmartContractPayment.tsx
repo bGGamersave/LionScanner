@@ -211,7 +211,7 @@ export default function SmartContractPayment({
               </div>
               <div className="space-y-1 text-center">
                 <h4 className="text-sm font-bold font-mono text-emerald-400 uppercase tracking-wide">Transaction Confirmed!</h4>
-                <p className="text-xs text-muted-foreground">Lions Swarm AI membership activated successfully.</p>
+                <p className="text-xs text-muted-foreground">The Lion Scanner AI membership activated successfully.</p>
               </div>
 
               <div className="w-full bg-muted/40 p-4 rounded-xl border border-border/60 text-xs font-mono space-y-2 max-w-md">

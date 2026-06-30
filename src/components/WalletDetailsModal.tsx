@@ -287,7 +287,7 @@ export default function WalletDetailsModal({
 
                 {/* Watermark badge */}
                 <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none opacity-5 border-2 border-primary rotate-12 p-3 rounded-xl uppercase font-extrabold font-sans text-2xl tracking-widest text-primary">
-                  Lions Trading Swarm
+                  The Lion Scanner
                 </div>
               </div>
             </div>

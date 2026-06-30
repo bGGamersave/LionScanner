@@ -19,13 +19,15 @@ import {
   Sparkles,
   Loader2,
   X,
-  RefreshCw
+  RefreshCw,
+  Lock
 } from 'lucide-react';
 import React, { useState, useEffect, useRef } from 'react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
@@ -527,6 +529,46 @@ Establish position in the current accumulation range with a stop loss below **$$
     }
   });
 
+  const [chartMarkups, setChartMarkups] = useState<any[]>(() => {
+    try {
+      const saved = localStorage.getItem('swarm_chart_markups');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const [markupType, setMarkupType] = useState<string>('Support');
+  const [markupValue, setMarkupValue] = useState<string>('');
+  const [markupNotes, setMarkupNotes] = useState<string>('');
+
+  useEffect(() => {
+    localStorage.setItem('swarm_chart_markups', JSON.stringify(chartMarkups));
+  }, [chartMarkups]);
+
+  const handleAddMarkup = () => {
+    if (!markupNotes.trim()) {
+      alert("Please enter analysis notes for this markup.");
+      return;
+    }
+    const newMarkup = {
+      id: 'markup_' + Date.now(),
+      symbol: activeSymbol,
+      type: markupType,
+      value: markupValue,
+      notes: markupNotes,
+      timeframe: activeTFLabel,
+      date: Date.now()
+    };
+    setChartMarkups(prev => [newMarkup, ...prev]);
+    setMarkupValue('');
+    setMarkupNotes('');
+  };
+
+  const handleRemoveMarkup = (id: string) => {
+    setChartMarkups(prev => prev.filter(m => m.id !== id));
+  };
+
   const [usdcBalance, setUsdcBalance] = useState<number>(() => {
     const val = localStorage.getItem('swarm_wallet_usdc');
     if (val) return parseFloat(val);
@@ -629,7 +671,7 @@ Establish position in the current accumulation range with a stop loss below **$$
             <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground font-bold">
               L
             </div>
-            <span className="text-lg md:text-xl lion-serif tracking-tight pr-2">Lions Trading Swarm</span>
+            <span className="text-lg md:text-xl lion-serif tracking-tight pr-2 text-transparent bg-clip-text bg-gradient-to-r from-orange-400 via-amber-500 to-yellow-500">The Lion Scanner</span>
           </div>
         </div>
         
@@ -743,7 +785,7 @@ Establish position in the current accumulation range with a stop loss below **$$
               <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground font-black text-sm shadow-md shadow-primary/20">
                 L
               </div>
-              <span className="text-sm font-bold font-mono tracking-tight text-foreground uppercase">Lions Swarm</span>
+              <span className="text-sm font-bold font-mono tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-orange-400 via-amber-500 to-yellow-500 uppercase">The Lion Scanner</span>
             </div>
 
             <div className="relative w-48 md:w-96 hidden sm:block">
@@ -992,8 +1034,138 @@ Establish position in the current accumulation range with a stop loss below **$$
                           </div>
                         </CardHeader>
                         <CardContent className="flex-1 p-0 pb-0 overflow-hidden relative min-h-[520px]">
-                          <Chart symbol={activeSymbol} interval={activeInterval} height={520} />
+                          <div className={(userTier === 'free' || userTier === 'basic') ? 'pointer-events-none opacity-25 blur-[3px] h-full w-full' : 'h-full w-full'}>
+                            <Chart symbol={activeSymbol} interval={activeInterval} height={520} />
+                          </div>
+                          {(userTier === 'free' || userTier === 'basic') && (
+                            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-background/70 backdrop-blur-md p-6 text-center">
+                              <div className="p-3 bg-primary/10 rounded-full border border-primary/20 mb-4 animate-bounce">
+                                <Lock className="w-8 h-8 text-primary" />
+                              </div>
+                              <h3 className="text-base font-bold font-mono text-foreground uppercase tracking-wider">Chart Play Mode Locked</h3>
+                              <p className="text-xs text-muted-foreground max-w-sm mt-2 mb-6 leading-relaxed">
+                                Interactive advanced real-time charts, custom drawing indicators, and active play sandbox are reserved for **Pro** and **Ultimate** members.
+                              </p>
+                              <Button 
+                                onClick={() => {
+                                  setSubscriptionTriggerReason('upgrade');
+                                  setIsSubscriptionModalOpen(true);
+                                }}
+                                className="bg-primary hover:bg-primary/90 text-primary-foreground font-mono text-xs uppercase tracking-wider px-6 py-2 rounded-lg cursor-pointer transition-all shadow-md shadow-primary/25"
+                              >
+                                Upgrade to Pro Plan
+                              </Button>
+                            </div>
+                          )}
                         </CardContent>
+
+                        {/* Conditional Chart Markups Panel - unlocked for Pro/Ultimate */}
+                        {(userTier === 'pro' || userTier === 'ultimate') && (
+                          <div className="border-t border-border/50 bg-muted/5 p-4 space-y-4">
+                            <div className="flex items-center justify-between border-b border-border/40 pb-2">
+                              <div className="flex items-center gap-2">
+                                <Sparkles className="w-4 h-4 text-primary" />
+                                <h4 className="text-xs font-mono font-bold uppercase tracking-wider text-foreground">
+                                  Active Chart Markups & Drawings
+                                </h4>
+                              </div>
+                              <span className="text-[10px] font-mono text-muted-foreground bg-muted/50 px-2 py-0.5 rounded border border-border/30">
+                                {chartMarkups.filter(m => m.symbol === activeSymbol).length} saved for {activeSymbolLabel}
+                              </span>
+                            </div>
+
+                            {/* Form to add a markup */}
+                            <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 items-end">
+                              <div className="space-y-1">
+                                <label className="text-[9px] uppercase tracking-wider font-bold text-muted-foreground font-mono">
+                                  Markup Type
+                                </label>
+                                <select
+                                  value={markupType}
+                                  onChange={(e) => setMarkupType(e.target.value)}
+                                  className="w-full h-8 bg-background border border-border rounded px-2 text-xs font-mono text-foreground focus:ring-1 focus:ring-primary focus:outline-none"
+                                >
+                                  <option value="Support">🟢 Support Level</option>
+                                  <option value="Resistance">🔴 Resistance Level</option>
+                                  <option value="Trendline">📈 Trendline</option>
+                                  <option value="Fib Level">📐 Fibonacci Level</option>
+                                  <option value="Annotation">✍️ Annotation / Note</option>
+                                </select>
+                              </div>
+                              <div className="space-y-1">
+                                <label className="text-[9px] uppercase tracking-wider font-bold text-muted-foreground font-mono">
+                                  Value / Price Level
+                                </label>
+                                <Input
+                                  type="text"
+                                  placeholder="e.g. $65,400"
+                                  value={markupValue}
+                                  onChange={(e) => setMarkupValue(e.target.value)}
+                                  className="h-8 text-xs font-mono border border-border bg-background"
+                                />
+                              </div>
+                              <div className="space-y-1 sm:col-span-2 flex gap-2 items-end">
+                                <div className="space-y-1 flex-1">
+                                  <label className="text-[9px] uppercase tracking-wider font-bold text-muted-foreground font-mono">
+                                    Analysis Notes
+                                  </label>
+                                  <Input
+                                    type="text"
+                                    placeholder="e.g. Retesting high volume node"
+                                    value={markupNotes}
+                                    onChange={(e) => setMarkupNotes(e.target.value)}
+                                    className="h-8 text-xs font-sans border-border bg-background"
+                                  />
+                                </div>
+                                <Button
+                                  onClick={handleAddMarkup}
+                                  size="sm"
+                                  className="bg-primary hover:bg-primary/90 text-primary-foreground h-8 text-[10px] uppercase font-mono tracking-wider cursor-pointer px-4 flex items-center justify-center shrink-0"
+                                >
+                                  Add Markup
+                                </Button>
+                              </div>
+                            </div>
+
+                            {/* List of saved markups for active asset */}
+                            {chartMarkups.filter(m => m.symbol === activeSymbol).length > 0 ? (
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-40 overflow-y-auto pr-1">
+                                {chartMarkups.filter(m => m.symbol === activeSymbol).map((markup) => (
+                                  <div key={markup.id} className="flex justify-between items-center bg-background/50 border border-border/60 p-2 rounded-lg text-[10px] font-mono hover:border-primary/20 transition-all">
+                                    <div className="space-y-0.5">
+                                      <div className="flex items-center gap-1.5">
+                                        <span className={`px-1 rounded text-[8px] font-bold uppercase ${
+                                          markup.type === 'Support' ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' :
+                                          markup.type === 'Resistance' ? 'bg-red-500/10 text-red-500 border border-red-500/20' :
+                                          markup.type === 'Trendline' ? 'bg-indigo-500/10 text-indigo-500 border border-indigo-500/20' :
+                                          markup.type === 'Fib Level' ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20' :
+                                          'bg-muted text-foreground border border-border'
+                                        }`}>
+                                          {markup.type}
+                                        </span>
+                                        {markup.value && <span className="font-bold text-foreground">{markup.value}</span>}
+                                        <span className="text-[9px] text-muted-foreground">({markup.timeframe})</span>
+                                      </div>
+                                      <p className="text-[9px] text-muted-foreground font-sans">{markup.notes}</p>
+                                    </div>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      onClick={() => handleRemoveMarkup(markup.id)}
+                                      className="w-5 h-5 text-muted-foreground hover:text-red-500 hover:bg-red-500/10 rounded"
+                                    >
+                                      <X className="w-3 h-3" />
+                                    </Button>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="text-[9.5px] text-muted-foreground font-mono text-center py-2 border border-dashed border-border/50 rounded-lg bg-background/30">
+                                No active markups saved for {activeSymbolLabel}. Save your levels above to store locally!
+                              </p>
+                            )}
+                          </div>
+                        )}
                       </Card>
 
                       {/* 24-Hour Strategy Room Analysis Card */}
@@ -1127,7 +1299,7 @@ Can you perform an advanced confirmation analyze of this recommendation using co
                     </div>
 
                     {/* Live Signal Feed */}
-                    <Card className="bg-card flex flex-col h-[500px]">
+                    <Card className="bg-card flex flex-col h-[500px] relative overflow-hidden">
                       <CardHeader className="pb-3 border-b border-border/50">
                         <CardTitle className="text-lg flex items-center justify-between text-[11px] uppercase tracking-widest text-muted-foreground font-sans">
                           Swarm Pro Signals
@@ -1137,32 +1309,54 @@ Can you perform an advanced confirmation analyze of this recommendation using co
                           </span>
                         </CardTitle>
                       </CardHeader>
-                      <ScrollArea className="flex-1 p-0">
-                        <div className="flex flex-col gap-2 p-3">
-                          {PRO_SIGNALS.map((signal) => (
-                            <div 
-                              key={signal.id} 
-                              onClick={() => setActiveTab('perps')}
-                              className="p-3 bg-background border border-border rounded-lg hover:border-primary/50 transition-colors cursor-pointer group hover:bg-muted/10"
-                            >
-                              <div className="flex justify-between items-start mb-1">
-                                <span className="text-[10px] font-mono text-muted-foreground">{signal.id} • {signal.timeframe}</span>
-                                <span className="text-[10px] text-primary font-mono">{signal.confidence}% CONF</span>
-                              </div>
-                              <div className="flex justify-between items-center">
-                                <p className={`text-xs font-mono font-bold uppercase p-0 ${signal.type === 'Long' ? 'text-emerald-500' : 'text-red-500'}`}>
-                                  {signal.asset} {signal.type}
-                                </p>
-                                <span className="text-[8px] bg-muted/60 px-1 py-0.2 rounded font-mono text-muted-foreground uppercase">{signal.category}</span>
-                              </div>
-                              <div className="flex justify-between text-[9px] mt-2 text-muted-foreground font-mono">
-                                <span>ENTRY: {signal.entry}</span>
-                                <span className="text-muted-foreground opacity-60">{signal.time}</span>
-                              </div>
-                            </div>
-                          ))}
+                      {userTier === 'free' ? (
+                        <div className="flex-1 flex flex-col items-center justify-center p-6 text-center bg-background/50 backdrop-blur-[2px] relative z-10">
+                          <div className="p-3 bg-primary/10 rounded-full border border-primary/20 mb-3 animate-pulse text-primary">
+                            <Lock className="w-5 h-5" />
+                          </div>
+                          <h4 className="text-xs font-bold font-mono text-foreground uppercase tracking-wider">Signals Locked</h4>
+                          <p className="text-[10px] text-muted-foreground max-w-[200px] mt-1 mb-4 leading-normal">
+                            Live buy/sell signals with exact entry triggers require a **Basic** plan or higher.
+                          </p>
+                          <Button 
+                            onClick={() => {
+                              setSubscriptionTriggerReason('upgrade');
+                              setIsSubscriptionModalOpen(true);
+                            }}
+                            size="sm"
+                            className="bg-primary hover:bg-primary/90 text-primary-foreground font-mono text-[9px] uppercase tracking-wider h-7 px-3 rounded cursor-pointer"
+                          >
+                            Upgrade ($5/mo)
+                          </Button>
                         </div>
-                      </ScrollArea>
+                      ) : (
+                        <ScrollArea className="flex-1 p-0">
+                          <div className="flex flex-col gap-2 p-3">
+                            {PRO_SIGNALS.map((signal) => (
+                              <div 
+                                key={signal.id} 
+                                onClick={() => setActiveTab('perps')}
+                                className="p-3 bg-background border border-border rounded-lg hover:border-primary/50 transition-colors cursor-pointer group hover:bg-muted/10"
+                              >
+                                <div className="flex justify-between items-start mb-1">
+                                  <span className="text-[10px] font-mono text-muted-foreground">{signal.id} • {signal.timeframe}</span>
+                                  <span className="text-[10px] text-primary font-mono">{signal.confidence}% CONF</span>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                  <p className={`text-xs font-mono font-bold uppercase p-0 ${signal.type === 'Long' ? 'text-emerald-500' : 'text-red-500'}`}>
+                                    {signal.asset} {signal.type}
+                                  </p>
+                                  <span className="text-[8px] bg-muted/60 px-1 py-0.2 rounded font-mono text-muted-foreground uppercase">{signal.category}</span>
+                                </div>
+                                <div className="flex justify-between text-[9px] mt-2 text-muted-foreground font-mono">
+                                  <span>ENTRY: {signal.entry}</span>
+                                  <span className="text-muted-foreground opacity-60">{signal.time}</span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </ScrollArea>
+                      )}
                     </Card>
 
                   </div>
@@ -1238,6 +1432,11 @@ Can you perform an advanced confirmation analyze of this recommendation using co
                   solBalance={solBalance}
                   setSolBalance={setSolBalance}
                   globalPrices={globalPrices}
+                  userTier={userTier}
+                  onTriggerUpgrade={() => {
+                    setSubscriptionTriggerReason('upgrade');
+                    setIsSubscriptionModalOpen(true);
+                  }}
                   onSendToAI={(prompt) => {
                     setAiInitialPrompt(prompt);
                     setIsChatOpen(true);
@@ -1349,6 +1548,8 @@ Can you perform an advanced confirmation analyze of this recommendation using co
             setEmail={setProfileEmail}
             receipts={receipts}
             setReceipts={setReceipts}
+            chartMarkups={chartMarkups}
+            setChartMarkups={setChartMarkups}
           />
 
           {/* On-Chain Wallet Details / Screenshot Modal */}
@@ -1375,7 +1576,7 @@ Can you perform an advanced confirmation analyze of this recommendation using co
                     </div>
                     <div>
                       <h3 className="text-sm font-bold font-mono uppercase text-foreground">{projectionAsset.label} 1W Forecast</h3>
-                      <p className="text-[10px] text-muted-foreground">Lions Swarm AI Price Projection Engine</p>
+                      <p className="text-[10px] text-muted-foreground font-mono">The Lion Scanner AI Price Projection Engine</p>
                     </div>
                   </div>
                   <button 
@@ -1386,88 +1587,123 @@ Can you perform an advanced confirmation analyze of this recommendation using co
                   </button>
                 </div>
 
-                <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                  {isProjectionLoading ? (
-                    <div className="flex flex-col items-center justify-center py-16 space-y-4">
-                      <Loader2 className="w-8 h-8 text-primary animate-spin" />
-                      <div className="space-y-1.5 text-center">
-                        <p className="text-xs font-mono font-bold uppercase text-foreground tracking-wider animate-pulse">Running Lions AI Consensus...</p>
-                        <p className="text-[10px] text-muted-foreground">Aggregating orderbook depth & sentiment confluences...</p>
-                      </div>
+                {userTier !== 'ultimate' ? (
+                  <div className="flex-1 overflow-y-auto p-8 space-y-6 flex flex-col items-center justify-center min-h-[350px] text-center">
+                    <div className="p-4 bg-amber-500/10 rounded-full border border-amber-500/20 animate-pulse text-amber-500">
+                      <Lock className="w-10 h-10" />
                     </div>
-                  ) : projectionData ? (
-                    <div className="space-y-6">
-                      {/* Top Metrics Banner */}
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 bg-muted/40 p-4 rounded-xl border border-border/60">
-                        <div>
-                          <span className="text-[9px] uppercase font-mono tracking-wider text-muted-foreground">Current Price</span>
-                          <p className="text-sm font-bold font-mono text-foreground">${livePrice}</p>
-                        </div>
-                        <div>
-                          <span className="text-[9px] uppercase font-mono tracking-wider text-muted-foreground">1W Projected Price</span>
-                          <p className="text-sm font-bold font-mono text-amber-400">${projectionData.projectedPrice?.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
-                        </div>
-                        <div>
-                          <span className="text-[9px] uppercase font-mono tracking-wider text-muted-foreground">Direction Bias</span>
-                          <div className="mt-0.5">
-                            <span className={`inline-flex items-center gap-1 text-[9.5px] font-bold font-mono px-2 py-0.5 rounded uppercase ${
-                              projectionData.direction === 'BULLISH'
-                                ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                                : 'bg-red-500/10 text-red-400 border border-red-500/20'
-                            }`}>
-                              {projectionData.direction === 'BULLISH' ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-                              {projectionData.direction} ({projectionData.percentChange})
-                            </span>
+                    <div className="space-y-2 max-w-md">
+                      <h4 className="text-base font-bold font-mono text-foreground uppercase tracking-wider">AI 1W Forecast Locked</h4>
+                      <p className="text-xs text-muted-foreground leading-relaxed">
+                        The premium 1-Week Swarm Forecast & consensus simulator uses Deep-NLP orderbook depth projection to estimate buy/sell bands. This resource-intensive engine is reserved exclusively for **Ultimate** plan members.
+                      </p>
+                    </div>
+                    <div className="flex gap-3 pt-2">
+                      <Button 
+                        variant="outline"
+                        onClick={() => setProjectionAsset(null)}
+                        className="font-mono text-xs uppercase h-9 tracking-wider cursor-pointer"
+                      >
+                        Cancel
+                      </Button>
+                      <Button 
+                        onClick={() => {
+                          setProjectionAsset(null);
+                          setSubscriptionTriggerReason('upgrade');
+                          setIsSubscriptionModalOpen(true);
+                        }}
+                        className="bg-amber-500 hover:bg-amber-600 text-black font-mono text-xs uppercase tracking-wider h-9 px-6 rounded-lg cursor-pointer transition-all shadow-md shadow-amber-500/20 font-bold"
+                      >
+                        Upgrade to Ultimate ($29)
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                      {isProjectionLoading ? (
+                        <div className="flex flex-col items-center justify-center py-16 space-y-4">
+                          <Loader2 className="w-8 h-8 text-primary animate-spin" />
+                          <div className="space-y-1.5 text-center">
+                            <p className="text-xs font-mono font-bold uppercase text-foreground tracking-wider animate-pulse">Running The Lion Scanner AI Consensus...</p>
+                            <p className="text-[10px] text-muted-foreground">Aggregating orderbook depth & sentiment confluences...</p>
                           </div>
                         </div>
-                        <div>
-                          <span className="text-[9px] uppercase font-mono tracking-wider text-muted-foreground">Weekly Range</span>
-                          <p className="text-[11px] font-semibold font-mono text-muted-foreground mt-0.5">
-                            ${projectionData.weeklyLow?.toLocaleString()} - ${projectionData.weeklyHigh?.toLocaleString()}
-                          </p>
+                      ) : projectionData ? (
+                        <div className="space-y-6">
+                          {/* Top Metrics Banner */}
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 bg-muted/40 p-4 rounded-xl border border-border/60">
+                            <div>
+                              <span className="text-[9px] uppercase font-mono tracking-wider text-muted-foreground">Current Price</span>
+                              <p className="text-sm font-bold font-mono text-foreground">${livePrice}</p>
+                            </div>
+                            <div>
+                              <span className="text-[9px] uppercase font-mono tracking-wider text-muted-foreground">1W Projected Price</span>
+                              <p className="text-sm font-bold font-mono text-amber-400">${projectionData.projectedPrice?.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                            </div>
+                            <div>
+                              <span className="text-[9px] uppercase font-mono tracking-wider text-muted-foreground">Direction Bias</span>
+                              <div className="mt-0.5">
+                                <span className={`inline-flex items-center gap-1 text-[9.5px] font-bold font-mono px-2 py-0.5 rounded uppercase ${
+                                  projectionData.direction === 'BULLISH'
+                                    ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                                    : 'bg-red-500/10 text-red-400 border border-red-500/20'
+                                }`}>
+                                  {projectionData.direction === 'BULLISH' ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                                  {projectionData.direction} ({projectionData.percentChange})
+                                </span>
+                              </div>
+                            </div>
+                            <div>
+                              <span className="text-[9px] uppercase font-mono tracking-wider text-muted-foreground">Weekly Range</span>
+                              <p className="text-[11px] font-semibold font-mono text-muted-foreground mt-0.5">
+                                ${projectionData.weeklyLow?.toLocaleString()} - ${projectionData.weeklyHigh?.toLocaleString()}
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Detailed AI Report */}
+                          <div className="bg-background/45 border border-border/55 p-5 rounded-xl space-y-3 max-w-none text-left">
+                            {renderMarkdownContent(projectionData.markdownAnalysis)}
+                          </div>
                         </div>
-                      </div>
-
-                      {/* Detailed AI Report */}
-                      <div className="bg-background/45 border border-border/55 p-5 rounded-xl space-y-3 max-w-none text-left">
-                        {renderMarkdownContent(projectionData.markdownAnalysis)}
-                      </div>
+                      ) : (
+                        <p className="text-xs text-muted-foreground text-center py-8">Error calculating technical forecast for this market.</p>
+                      )}
                     </div>
-                  ) : (
-                    <p className="text-xs text-muted-foreground text-center py-8">Error calculating technical forecast for this market.</p>
-                  )}
-                </div>
 
-                <div className="p-5 border-t border-border bg-muted/35 flex flex-col sm:flex-row justify-end gap-3">
-                  <Button 
-                    variant="outline"
-                    onClick={() => setProjectionAsset(null)}
-                    className="font-mono text-xs uppercase h-9 tracking-wider cursor-pointer"
-                  >
-                    Close Forecast
-                  </Button>
-                  <Button 
-                    onClick={() => {
-                      if (projectionData) {
-                        const prompt = `Let's deep dive into the 1-Week forecast for ${projectionAsset.label} (${projectionAsset.id.toUpperCase()}):
+                    <div className="p-5 border-t border-border bg-muted/35 flex flex-col sm:flex-row justify-end gap-3">
+                      <Button 
+                        variant="outline"
+                        onClick={() => setProjectionAsset(null)}
+                        className="font-mono text-xs uppercase h-9 tracking-wider cursor-pointer"
+                      >
+                        Close Forecast
+                      </Button>
+                      <Button 
+                        onClick={() => {
+                          if (projectionData) {
+                            const prompt = `Let's deep dive into the 1-Week forecast for ${projectionAsset.label} (${projectionAsset.id.toUpperCase()}):
 - Projected 1W target: $${projectionData.projectedPrice} (${projectionData.direction} trend bias)
 - Weekly Projected Range: $${projectionData.weeklyLow} to $${projectionData.weeklyHigh}
 
 ${projectionData.markdownAnalysis}
 
 What are the critical price milestones and exact validation triggers we should monitor on the chart?`;
-                        setAiInitialPrompt(prompt);
-                        setIsChatOpen(true);
-                        setProjectionAsset(null);
-                      }
-                    }}
-                    className="bg-primary hover:bg-primary/95 text-primary-foreground font-mono text-xs uppercase h-9 tracking-widest cursor-pointer px-4"
-                    disabled={isProjectionLoading || !projectionData}
-                  >
-                    <MessageSquare className="w-3.5 h-3.5 mr-1.5" />
-                    Interrogate Setup
-                  </Button>
-                </div>
+                            setAiInitialPrompt(prompt);
+                            setIsChatOpen(true);
+                            setProjectionAsset(null);
+                          }
+                        }}
+                        className="bg-primary hover:bg-primary/95 text-primary-foreground font-mono text-xs uppercase h-9 tracking-widest cursor-pointer px-4"
+                        disabled={isProjectionLoading || !projectionData}
+                      >
+                        <MessageSquare className="w-3.5 h-3.5 mr-1.5" />
+                        Interrogate Setup
+                      </Button>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           )}
@@ -1596,11 +1832,11 @@ What are the critical price milestones and exact validation triggers we should m
                           </li>
                           <li className="flex items-center gap-2">
                             <span className="w-1.5 h-1.5 rounded-full bg-primary"></span>
-                            <span>Standard 1W AI price forecasting</span>
+                            <span>Unlocks <strong>Live Signals Feed</strong></span>
                           </li>
                           <li className="flex items-center gap-2">
                             <span className="w-1.5 h-1.5 rounded-full bg-primary"></span>
-                            <span><strong>500</strong> Live API pulls per day</span>
+                            <span>Standard local profile data synchronization</span>
                           </li>
                         </ul>
                       </div>
@@ -1645,11 +1881,11 @@ What are the critical price milestones and exact validation triggers we should m
                           </li>
                           <li className="flex items-center gap-2">
                             <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
-                            <span>Swarm confluences & strategy room</span>
+                            <span className="text-foreground">Unlocks <strong>Perps Terminal</strong> (25x Leverage limit)</span>
                           </li>
                           <li className="flex items-center gap-2">
                             <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
-                            <span><strong>2,500</strong> Live API pulls per day</span>
+                            <span className="text-foreground">Unlocks <strong>Interactive Charts</strong> & Save custom markups</span>
                           </li>
                         </ul>
                       </div>
@@ -1688,11 +1924,11 @@ What are the critical price milestones and exact validation triggers we should m
                           </li>
                           <li className="flex items-center gap-2">
                             <span className="w-1.5 h-1.5 rounded-full bg-primary"></span>
-                            <span>Priority real-time AI modeling</span>
+                            <span>Unlocks <strong>100x Max Leverage</strong> on Perps Terminal</span>
                           </li>
                           <li className="flex items-center gap-2">
                             <span className="w-1.5 h-1.5 rounded-full bg-primary"></span>
-                            <span><strong>10,000</strong> Live API pulls per day</span>
+                            <span className="text-foreground">Unlocks <strong>Lions Swarm AI 1W Forecast Engine</strong></span>
                           </li>
                         </ul>
                       </div>

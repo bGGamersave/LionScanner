@@ -31,7 +31,7 @@ function detectSymbolInText(text: string): MarketAsset | null {
 const INITIAL_MESSAGE: Message = {
   id: 'init',
   sender: 'ai',
-  text: "Hello! I am the Lions Trading Swarm AI. I can analyze TradingView snapshots using Market Cipher B, Fibonacci retracements, and FVRP. I can also evaluate any Top 300 CoinGecko token to tell you if it's a good time to BUY, SELL, LONG, or SHORT today.\n\nTo better assist you, I have a few clarifying questions about your strategy:\n1. What timeframe do you primarily trade (e.g., 5m, 1H, Daily)?\n2. What is your preferred Risk-to-Reward ratio?\n3. Do you rely on any additional confluence indicators besides Market Cipher B when taking a trade?\n4. Are you predominantly scalping, day trading, or swing trading?"
+  text: "Hello! I am The Lion Scanner AI. I can analyze TradingView snapshots using Market Cipher B, Fibonacci retracements, and FVRP. I can also evaluate any Top 300 CoinGecko token to tell you if it's a good time to BUY, SELL, LONG, or SHORT today.\n\nTo better assist you, I have a few clarifying questions about your strategy:\n1. What timeframe do you primarily trade (e.g., 5m, 1H, Daily)?\n2. What is your preferred Risk-to-Reward ratio?\n3. Do you rely on any additional confluence indicators besides Market Cipher B when taking a trade?\n4. Are you predominantly scalping, day trading, or swing trading?"
 };
 
 const getCryptoQuoteDeclaration = {
@@ -247,7 +247,7 @@ export default function AIChat({
       const aiClient = new GoogleGenAI({ apiKey: activeKey });
 
       const aiConfig = {
-        systemInstruction: "You are the Lions Trading Swarm AI. If the user asks about a token in the CoinGecko top 300, LIMIT your response STRICTLY to stating whether it is a good time to BUY, SELL, LONG, or SHORT for the day, with a 1-2 sentence justification based on current market sentiment and any live data you fetched. Be decisive. If the user answers your clarifying questions about their strategy, acknowledge them and tailor future advice. Otherwise, adhere strictly to the prompts and restrictions.",
+        systemInstruction: "You are The Lion Scanner AI. If the user asks about a token in the CoinGecko top 300, LIMIT your response STRICTLY to stating whether it is a good time to BUY, SELL, LONG, or SHORT for the day, with a 1-2 sentence justification based on current market sentiment and any live data you fetched. Be decisive. If the user answers your clarifying questions about their strategy, acknowledge them and tailor future advice. Otherwise, adhere strictly to the prompts and restrictions.",
         tools: [{ functionDeclarations: [getCryptoQuoteDeclaration] }],
       };
 

@@ -58,6 +58,8 @@ interface ProfileModalProps {
   setEmail: (email: string) => void;
   receipts: any[];
   setReceipts: (receipts: any[]) => void;
+  chartMarkups?: any[];
+  setChartMarkups?: (markups: any[]) => void;
 }
 
 const BLOCKCHAINS = [
@@ -102,6 +104,8 @@ export default function ProfileModal({
   setEmail,
   receipts,
   setReceipts,
+  chartMarkups = [],
+  setChartMarkups,
 }: ProfileModalProps) {
   const [activeTab, setActiveTab] = useState<'wallet' | 'profile'>(walletAddress ? 'profile' : 'wallet');
   const [selectedWallet, setSelectedWallet] = useState<string>('phantom');
@@ -432,6 +436,7 @@ export default function ProfileModal({
         walletType,
         snapshotsCount,
         receipts,
+        chartMarkups,
         updatedAt: Date.now()
       };
       localStorage.setItem('swarm_profile_data_' + tempEmail, JSON.stringify(profileData));
@@ -470,6 +475,7 @@ export default function ProfileModal({
       walletType,
       snapshotsCount,
       receipts,
+      chartMarkups,
       updatedAt: Date.now()
     };
     localStorage.setItem('swarm_profile_data_' + tempEmail, JSON.stringify(profileData));
@@ -486,7 +492,7 @@ export default function ProfileModal({
 
   const handleDownloadBackup = () => {
     const backupData = {
-      app: "Lions Swarm Trading Portal",
+      app: "The Lion Scanner Trading Portal",
       email: tempEmail,
       username: tempUsername,
       avatarUrl: customAvatarInput,
@@ -497,6 +503,7 @@ export default function ProfileModal({
       },
       snapshotsCount,
       receipts,
+      chartMarkups,
       savedAt: new Date().toISOString()
     };
     
@@ -504,7 +511,7 @@ export default function ProfileModal({
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `swarm-profile-${tempEmail.split('@')[0]}-backup.json`;
+    link.download = `lion-scanner-profile-${tempEmail.split('@')[0]}-backup.json`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -523,7 +530,7 @@ export default function ProfileModal({
         <div className="relative h-28 bg-gradient-to-br from-orange-600/30 via-orange-950/40 to-background flex items-end p-5 border-b border-border/40">
           <div className="absolute top-4 left-4 inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-orange-500/10 border border-orange-500/20 text-orange-400 text-[10px] font-mono uppercase font-bold tracking-wider">
             <Sparkles className="w-3 h-3" />
-            Lions Swarm Web3 Portal
+            The Lion Scanner Web3 Portal
           </div>
           <div className="z-10 flex items-center gap-3">
             <div className="relative">
@@ -960,10 +967,11 @@ export default function ProfileModal({
                     </Badge>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2 text-[10px] font-mono text-muted-foreground bg-background/40 p-2.5 rounded-lg border border-border/30">
+                  <div className="grid grid-cols-3 gap-2 text-[9px] font-mono text-muted-foreground bg-background/40 p-2.5 rounded-lg border border-border/30">
                     <div>📸 SNAPSHOTS: <span className="text-foreground font-bold">{snapshotsCount}</span></div>
                     <div>🧾 RECEIPTS: <span className="text-foreground font-bold">{receipts?.length || 0}</span></div>
-                    <div className="col-span-2 pt-1 mt-1 border-t border-border/20 text-[9px]">
+                    <div>📈 MARKUPS: <span className="text-foreground font-bold">{chartMarkups?.length || 0}</span></div>
+                    <div className="col-span-3 pt-1 mt-1 border-t border-border/20 text-[9px]">
                       📂 Saved locally under: <span className="text-orange-400 font-bold">{tempEmail}</span>
                     </div>
                   </div>
