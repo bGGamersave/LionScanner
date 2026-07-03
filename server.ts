@@ -1,5 +1,6 @@
 import express from "express";
 import path from "path";
+import fs from "fs";
 import axios from "axios";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -684,6 +685,269 @@ Please output your analysis as a JSON object with the following fields:
     }
   });
 
+  // Persistence helpers for clock alert subscriptions
+  const SUBS_FILE_PATH = path.join(process.cwd(), "clock-subscriptions.json");
+  const SCHEDULER_STATE_PATH = path.join(process.cwd(), "clock-scheduler-state.json");
+
+  interface SchedulerState {
+    lastSentTime: number;
+  }
+
+  function getSubscribers(): string[] {
+    try {
+      if (fs.existsSync(SUBS_FILE_PATH)) {
+        const data = fs.readFileSync(SUBS_FILE_PATH, "utf-8");
+        const parsed = JSON.parse(data);
+        if (Array.isArray(parsed)) {
+          return parsed;
+        }
+      }
+    } catch (error) {
+      console.error("Error reading subscribers file:", error);
+    }
+    return [];
+  }
+
+  function saveSubscribers(emails: string[]): void {
+    try {
+      fs.writeFileSync(SUBS_FILE_PATH, JSON.stringify(emails, null, 2), "utf-8");
+    } catch (error) {
+      console.error("Error writing subscribers file:", error);
+    }
+  }
+
+  function getSchedulerState(): SchedulerState {
+    try {
+      if (fs.existsSync(SCHEDULER_STATE_PATH)) {
+        const data = fs.readFileSync(SCHEDULER_STATE_PATH, "utf-8");
+        return JSON.parse(data);
+      }
+    } catch (error) {
+      console.error("Error reading scheduler state:", error);
+    }
+    return { lastSentTime: 0 };
+  }
+
+  function saveSchedulerState(state: SchedulerState): void {
+    try {
+      fs.writeFileSync(SCHEDULER_STATE_PATH, JSON.stringify(state, null, 2), "utf-8");
+    } catch (error) {
+      console.error("Error writing scheduler state:", error);
+    }
+  }
+
+  async function sendWeeklyClockUpdate() {
+    const subscribers = getSubscribers();
+    if (subscribers.length === 0) {
+      console.log("[Clock Scheduler] No subscribers to send updates to.");
+      return;
+    }
+
+    const targetDate = new Date('2026-10-01T00:00:00');
+    const now = new Date();
+
+    // If we have passed October 1st, 2026, we don't send any more updates
+    if (now.getTime() >= targetDate.getTime()) {
+      console.log("[Clock Scheduler] Target date October 1st, 2026 has been reached/passed. No updates sent.");
+      return;
+    }
+
+    // Calculate countdown clock snapshot values at this moment
+    const difference = targetDate.getTime() - now.getTime();
+    const daysVal = Math.floor(difference / (1000 * 60 * 60 * 24));
+    const hoursVal = Math.floor((difference / (1000 * 60 * 60)) % 24);
+    const minutesVal = Math.floor((difference / 1000 / 60) % 60);
+    const secondsVal = Math.floor((difference / 1000) % 60);
+
+    const days = String(daysVal).padStart(3, '0');
+    const hours = String(hoursVal).padStart(2, '0');
+    const minutes = String(minutesVal).padStart(2, '0');
+    const seconds = String(secondsVal).padStart(2, '0');
+
+    // Determine robust App URL
+    const appUrl = process.env.APP_URL || "https://ais-dev-h6d5fs3k2ty6w3x3vvwo6d-627180610278.us-east1.run.app";
+
+    const renderDigit = (digit: string) => `
+      <span style="display: inline-block; background-color: #0c0f17; border: 1px solid #f97316; border-radius: 6px; padding: 10px 8px; color: #f97316; font-size: 22px; font-weight: 900; margin: 1px; font-family: monospace; min-width: 14px; text-align: center; box-shadow: inset 0 0 5px rgba(249, 115, 22, 0.3); text-shadow: 0 0 8px rgba(249, 115, 22, 0.8);">${digit}</span>
+    `;
+
+    console.log(`[Clock Scheduler] Sending weekly clock snapshot to ${subscribers.length} subscribers...`);
+
+    for (const email of subscribers) {
+      const unsubscribeUrl = `${appUrl}/api/unsubscribe-clock?email=${encodeURIComponent(email)}`;
+      
+      const emailHtml = `
+        <div style="background-color: #0c0f17; color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; padding: 40px 20px; text-align: center;">
+          <div style="max-width: 600px; margin: 0 auto; background-color: #131722; border: 1px solid #1e293b; border-radius: 16px; padding: 40px; text-align: left; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);">
+            
+            <div style="text-align: center; margin-bottom: 30px;">
+              <span style="font-size: 32px;">🦁</span>
+              <h2 style="font-size: 24px; font-weight: bold; margin: 10px 0 5px 0; color: #f97316; font-family: monospace; letter-spacing: 2px;">LIONS SWARM AI</h2>
+              <p style="color: #94a3b8; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; margin: 0;">7-Day Bear Market Bottom Countdown Update</p>
+            </div>
+
+            <hr style="border: 0; border-top: 1px solid #1e293b; margin-bottom: 30px;" />
+
+            <h3 style="color: #f8fafc; font-size: 18px; font-weight: bold; margin-bottom: 15px;">Your 7-Day Market Update</h3>
+            
+            <p style="color: #cbd5e1; font-size: 14px; line-height: 1.6; margin-bottom: 20px;">
+              Here is your scheduled 7-day update snapshot for the <strong>Bear Market Bottom Countdown Clock</strong>. The swarm is actively tracking macro capital flows, cycle projections, and volume profiles.
+            </p>
+
+            <div style="background-color: rgba(249, 115, 22, 0.08); border-left: 4px solid #f97316; padding: 15px; border-radius: 4px; margin-bottom: 25px;">
+              <p style="color: #f97316; font-size: 13px; font-weight: bold; margin: 0 0 5px 0; font-family: monospace;">STATUS REPORT</p>
+              <p style="color: #cbd5e1; font-size: 13px; margin: 0; line-height: 1.5;">
+                The countdown continues. Swarm intelligence indicators project that liquidity levels are aligning closely with the projected October bottom corridor. 
+              </p>
+            </div>
+
+            <!-- Clock Snapshot Visual -->
+            <div style="background-color: #07090e; border: 1px solid rgba(249, 115, 22, 0.2); border-radius: 12px; padding: 25px 15px; margin: 25px 0; text-align: center; box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.6);">
+              <p style="color: #f97316; font-size: 10px; font-family: monospace; letter-spacing: 2px; text-transform: uppercase; font-weight: bold; margin: 0 0 15px 0;">🔴 TODAY'S COUNTDOWN SNAPSHOT</p>
+              
+              <div style="display: inline-block; vertical-align: top; margin: 0 5px;">
+                <div style="display: inline-block;">
+                  ${days.split('').map(renderDigit).join('')}
+                </div>
+                <div style="color: #94a3b8; font-size: 9px; font-family: monospace; letter-spacing: 1px; text-transform: uppercase; margin-top: 5px; font-weight: bold;">Days</div>
+              </div>
+
+              <div style="display: inline-block; vertical-align: top; color: #f97316; font-size: 22px; font-weight: 900; line-height: 44px; margin: 0 2px;">:</div>
+
+              <div style="display: inline-block; vertical-align: top; margin: 0 5px;">
+                <div style="display: inline-block;">
+                  ${hours.split('').map(renderDigit).join('')}
+                </div>
+                <div style="color: #94a3b8; font-size: 9px; font-family: monospace; letter-spacing: 1px; text-transform: uppercase; margin-top: 5px; font-weight: bold;">Hours</div>
+              </div>
+
+              <div style="display: inline-block; vertical-align: top; color: #f97316; font-size: 22px; font-weight: 900; line-height: 44px; margin: 0 2px;">:</div>
+
+              <div style="display: inline-block; vertical-align: top; margin: 0 5px;">
+                <div style="display: inline-block;">
+                  ${minutes.split('').map(renderDigit).join('')}
+                </div>
+                <div style="color: #94a3b8; font-size: 9px; font-family: monospace; letter-spacing: 1px; text-transform: uppercase; margin-top: 5px; font-weight: bold;">Minutes</div>
+              </div>
+
+              <div style="display: inline-block; vertical-align: top; color: #f97316; font-size: 22px; font-weight: 900; line-height: 44px; margin: 0 2px;">:</div>
+
+              <div style="display: inline-block; vertical-align: top; margin: 0 5px;">
+                <div style="display: inline-block;">
+                  ${seconds.split('').map(renderDigit).join('')}
+                </div>
+                <div style="color: #94a3b8; font-size: 9px; font-family: monospace; letter-spacing: 1px; text-transform: uppercase; margin-top: 5px; font-weight: bold;">Seconds</div>
+              </div>
+
+              <p style="color: #64748b; font-size: 11px; margin: 15px 0 0 0;">Target Date: <strong style="color: #cbd5e1;">October 1, 2026</strong></p>
+            </div>
+
+            <!-- Services Highlights -->
+            <h3 style="color: #f8fafc; font-size: 15px; font-weight: bold; margin-top: 25px; margin-bottom: 15px; border-bottom: 1px solid #1e293b; padding-bottom: 6px; font-family: monospace; text-transform: uppercase;">Explore Active Swarm Tools</h3>
+            <p style="color: #94a3b8; font-size: 13px; line-height: 1.5; margin-bottom: 20px;">
+              Log in to the platform today to leverage the **AI 1W Forecast Engine** to evaluate top stock and crypto trends, use the **Perps Trading Simulator** to test high-leverage macro breakouts risk-free, or check the **Swarm Strategy Room** for real-time confluence parameters.
+            </p>
+
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="${appUrl}" style="background-color: #f97316; color: #000000; font-weight: bold; text-decoration: none; padding: 12px 28px; border-radius: 8px; font-size: 13px; font-family: monospace; text-transform: uppercase; letter-spacing: 1px; display: inline-block;">Launch Dashboard</a>
+            </div>
+
+            <hr style="border: 0; border-top: 1px solid #1e293b; margin-bottom: 20px;" />
+
+            <div style="text-align: center; color: #64748b; font-size: 11px; line-height: 1.5;">
+              <p style="margin: 0 0 10px 0;">You are receiving this email because you subscribed to weekly countdown alerts.</p>
+              <p style="margin: 0;">
+                <a href="${unsubscribeUrl}" style="color: #ef4444; text-decoration: underline; font-weight: bold;">Unsubscribe / Stop weekly alerts</a>
+              </p>
+            </div>
+
+          </div>
+        </div>
+      `;
+
+      if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
+        const transporter = nodemailer.createTransport({
+          host: process.env.SMTP_HOST,
+          port: parseInt(process.env.SMTP_PORT || "587"),
+          secure: process.env.SMTP_PORT === "465",
+          auth: {
+            user: process.env.SMTP_USER,
+            pass: process.env.SMTP_PASS
+          }
+        });
+
+        try {
+          await transporter.sendMail({
+            from: process.env.SMTP_FROM || `"Lions Swarm AI" <${process.env.SMTP_USER}>`,
+            to: email,
+            subject: `🦁 7-Day Update: ${daysVal} Days Left to Bear Market Bottom!`,
+            html: emailHtml
+          });
+          console.log(`[Clock Scheduler] Weekly snapshot email successfully sent to ${email}`);
+        } catch (err) {
+          console.error(`[Clock Scheduler Error] Failed to send email to ${email}:`, err);
+        }
+      } else {
+        console.log(`\n================== SIMULATED WEEKLY UPDATE SENT ==================`);
+        console.log(`To: ${email}`);
+        console.log(`Subject: 🦁 7-Day Update: ${daysVal} Days Left to Bear Market Bottom!`);
+        console.log(`Content:\n${emailHtml}`);
+        console.log(`==========================================================\n`);
+      }
+    }
+  }
+
+  // Scheduler loop checking every hour (60 minutes) for 7-day interval
+  const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+
+  function runClockScheduler() {
+    console.log("[Clock Scheduler] Starting periodic background interval check (every 1 hour)...");
+    
+    // Perform check immediately on startup
+    checkAndSendUpdates();
+
+    // Then check every hour
+    setInterval(() => {
+      checkAndSendUpdates();
+    }, 1 * 60 * 60 * 1000); // 1 hour
+  }
+
+  async function checkAndSendUpdates() {
+    try {
+      const state = getSchedulerState();
+      const now = Date.now();
+      const targetDate = new Date('2026-10-01T00:00:00').getTime();
+
+      // If we've passed the target date, do not run
+      if (now >= targetDate) {
+        return;
+      }
+
+      // If lastSentTime is 0, initialize it as the current time so we schedule the first one 7 days from now
+      if (state.lastSentTime === 0) {
+        state.lastSentTime = now;
+        saveSchedulerState(state);
+        console.log("[Clock Scheduler] Initialized scheduler state. First update scheduled in 7 days.");
+        return;
+      }
+
+      const timePassed = now - state.lastSentTime;
+      if (timePassed >= SEVEN_DAYS_MS) {
+        console.log(`[Clock Scheduler] 7 days elapsed since last update (${Math.round(timePassed / (1000 * 60 * 60 * 24))} days passed). Triggering updates!`);
+        await sendWeeklyClockUpdate();
+        
+        // Update state
+        state.lastSentTime = now;
+        saveSchedulerState(state);
+      } else {
+        const hoursRemaining = ((SEVEN_DAYS_MS - timePassed) / (1000 * 60 * 60)).toFixed(1);
+        console.log(`[Clock Scheduler] Checking: ${hoursRemaining} hours remaining until next 7-day update.`);
+      }
+    } catch (error) {
+      console.error("[Clock Scheduler] Error in checkAndSendUpdates loop:", error);
+    }
+  }
+
   // API Route for Bear Market Bottom clock subscription & welcome email
   app.post("/api/subscribe-clock", async (req, res) => {
     try {
@@ -694,10 +958,45 @@ Please output your analysis as a JSON object with the following fields:
 
       console.log(`[Clock Subscription] Received subscription request for email: ${email}`);
 
-      // Prepare beautiful HTML Email content with Slate Theme styling
-      const appUrl = process.env.APP_URL || "https://ais-dev-h6d5fs3k2ty6w3x3vvwo6d-627180610278.us-east1.run.app";
+      // Save email in persistent subscribers list
+      const subscribers = getSubscribers();
+      if (!subscribers.includes(email)) {
+        subscribers.push(email);
+        saveSubscribers(subscribers);
+        console.log(`[Clock Subscription] Saved new subscriber to file: ${email}`);
+      }
+
+      // Calculate target countdown clock snapshot values at the time of subscription
+      const targetDate = new Date('2026-10-01T00:00:00');
+      const now = new Date();
+      const difference = targetDate.getTime() - now.getTime();
+      let days = "000";
+      let hours = "00";
+      let minutes = "00";
+      let seconds = "00";
+      if (difference > 0) {
+        const daysVal = Math.floor(difference / (1000 * 60 * 60 * 24));
+        const hoursVal = Math.floor((difference / (1000 * 60 * 60)) % 24);
+        const minutesVal = Math.floor((difference / 1000 / 60) % 60);
+        const secondsVal = Math.floor((difference / 1000) % 60);
+        days = String(daysVal).padStart(3, '0');
+        hours = String(hoursVal).padStart(2, '0');
+        minutes = String(minutesVal).padStart(2, '0');
+        seconds = String(secondsVal).padStart(2, '0');
+      }
+
+      // Determine robust App URL
+      const reqHost = req.get('host') || "localhost:3000";
+      const protocol = req.secure || req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http';
+      const appUrl = process.env.APP_URL || `${protocol}://${reqHost}`;
       const unsubscribeUrl = `${appUrl}/api/unsubscribe-clock?email=${encodeURIComponent(email)}`;
 
+      // Helper function to render digit box
+      const renderDigit = (digit: string) => `
+        <span style="display: inline-block; background-color: #0c0f17; border: 1px solid #f97316; border-radius: 6px; padding: 10px 8px; color: #f97316; font-size: 22px; font-weight: 900; margin: 1px; font-family: monospace; min-width: 14px; text-align: center; box-shadow: inset 0 0 5px rgba(249, 115, 22, 0.3); text-shadow: 0 0 8px rgba(249, 115, 22, 0.8);">${digit}</span>
+      `;
+
+      // Prepare beautiful HTML Email content with Slate Theme styling
       const emailHtml = `
         <div style="background-color: #0c0f17; color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; padding: 40px 20px; text-align: center;">
           <div style="max-width: 600px; margin: 0 auto; background-color: #131722; border: 1px solid #1e293b; border-radius: 16px; padding: 40px; text-align: left; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);">
@@ -710,10 +1009,10 @@ Please output your analysis as a JSON object with the following fields:
 
             <hr style="border: 0; border-top: 1px solid #1e293b; margin-bottom: 30px;" />
 
-            <h3 style="color: #f8fafc; font-size: 18px; font-weight: bold; margin-bottom: 15px;">Welcome to the Bear Market Bottom Swarm!</h3>
+            <h3 style="color: #f8fafc; font-size: 18px; font-weight: bold; margin-bottom: 15px;">Thanks for Subscribing!</h3>
             
             <p style="color: #cbd5e1; font-size: 14px; line-height: 1.6; margin-bottom: 20px;">
-              You have successfully subscribed to weekly updates for the <strong>Bear Market Bottom Countdown Clock</strong>.
+              Thank you so much for subscribing to the <strong>Bear Market Bottom Countdown Clock alerts</strong>. We're thrilled to have you join our elite swarm of disciplined market observers!
             </p>
 
             <div style="background-color: rgba(249, 115, 22, 0.08); border-left: 4px solid #f97316; padding: 15px; border-radius: 4px; margin-bottom: 25px;">
@@ -721,6 +1020,73 @@ Please output your analysis as a JSON object with the following fields:
               <p style="color: #cbd5e1; font-size: 13px; margin: 0; line-height: 1.5;">
                 You will receive a snapshot of the countdown clock <strong>every 7 days at 7:00 AM PST</strong> directly in your inbox.
               </p>
+            </div>
+
+            <!-- Clock Snapshot Visual -->
+            <div style="background-color: #07090e; border: 1px solid rgba(249, 115, 22, 0.2); border-radius: 12px; padding: 25px 15px; margin: 25px 0; text-align: center; box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.6);">
+              <p style="color: #f97316; font-size: 10px; font-family: monospace; letter-spacing: 2px; text-transform: uppercase; font-weight: bold; margin: 0 0 15px 0;">🔴 LIVE CLOCK SNAPSHOT AT SUBSCRIPTION</p>
+              
+              <div style="display: inline-block; vertical-align: top; margin: 0 5px;">
+                <div style="display: inline-block;">
+                  ${days.split('').map(renderDigit).join('')}
+                </div>
+                <div style="color: #94a3b8; font-size: 9px; font-family: monospace; letter-spacing: 1px; text-transform: uppercase; margin-top: 5px; font-weight: bold;">Days</div>
+              </div>
+
+              <div style="display: inline-block; vertical-align: top; color: #f97316; font-size: 22px; font-weight: 900; line-height: 44px; margin: 0 2px;">:</div>
+
+              <div style="display: inline-block; vertical-align: top; margin: 0 5px;">
+                <div style="display: inline-block;">
+                  ${hours.split('').map(renderDigit).join('')}
+                </div>
+                <div style="color: #94a3b8; font-size: 9px; font-family: monospace; letter-spacing: 1px; text-transform: uppercase; margin-top: 5px; font-weight: bold;">Hours</div>
+              </div>
+
+              <div style="display: inline-block; vertical-align: top; color: #f97316; font-size: 22px; font-weight: 900; line-height: 44px; margin: 0 2px;">:</div>
+
+              <div style="display: inline-block; vertical-align: top; margin: 0 5px;">
+                <div style="display: inline-block;">
+                  ${minutes.split('').map(renderDigit).join('')}
+                </div>
+                <div style="color: #94a3b8; font-size: 9px; font-family: monospace; letter-spacing: 1px; text-transform: uppercase; margin-top: 5px; font-weight: bold;">Minutes</div>
+              </div>
+
+              <div style="display: inline-block; vertical-align: top; color: #f97316; font-size: 22px; font-weight: 900; line-height: 44px; margin: 0 2px;">:</div>
+
+              <div style="display: inline-block; vertical-align: top; margin: 0 5px;">
+                <div style="display: inline-block;">
+                  ${seconds.split('').map(renderDigit).join('')}
+                </div>
+                <div style="color: #94a3b8; font-size: 9px; font-family: monospace; letter-spacing: 1px; text-transform: uppercase; margin-top: 5px; font-weight: bold;">Seconds</div>
+              </div>
+
+              <p style="color: #64748b; font-size: 11px; margin: 15px 0 0 0;">Target Date: <strong style="color: #cbd5e1;">October 1, 2026</strong> (00:00:00 Local)</p>
+            </div>
+
+            <!-- Services Offered -->
+            <h3 style="color: #f8fafc; font-size: 16px; font-weight: bold; margin-top: 30px; margin-bottom: 15px; border-bottom: 1px solid #1e293b; padding-bottom: 8px; font-family: monospace; text-transform: uppercase; letter-spacing: 1px;">Our Professional Services & Tools</h3>
+            
+            <div style="margin-bottom: 25px;">
+              <div style="margin-bottom: 15px;">
+                <h4 style="color: #f97316; font-size: 13px; font-weight: bold; margin: 0 0 5px 0; font-family: monospace;">📊 24H Swarm Strategy Room</h4>
+                <p style="color: #94a3b8; font-size: 12px; margin: 0; line-height: 1.5;">Get immediate real-time timeframe bias and confluence triggers based on live Market Cipher B wave momentum and Volume Profile (FVRP) analyses.</p>
+              </div>
+              <div style="margin-bottom: 15px;">
+                <h4 style="color: #f97316; font-size: 13px; font-weight: bold; margin: 0 0 5px 0; font-family: monospace;">⚡ Swarm Pro Signals</h4>
+                <p style="color: #94a3b8; font-size: 12px; margin: 0; line-height: 1.5;">Access our highly advanced breakout tracker, scanning top stock, metal, and crypto markets to spot critical trend shifts and high-probability setups.</p>
+              </div>
+              <div style="margin-bottom: 15px;">
+                <h4 style="color: #f97316; font-size: 13px; font-weight: bold; margin: 0 0 5px 0; font-family: monospace;">🎯 AI 1W Forecast Engine</h4>
+                <p style="color: #94a3b8; font-size: 12px; margin: 0; line-height: 1.5;">Generate custom 7-day price projections, quantitative strategy check-lists, and detailed target corridors directly using server-side intelligence confluences.</p>
+              </div>
+              <div style="margin-bottom: 15px;">
+                <h4 style="color: #f97316; font-size: 13px; font-weight: bold; margin: 0 0 5px 0; font-family: monospace;">📈 Interactive Chart & Save Markups</h4>
+                <p style="color: #94a3b8; font-size: 12px; margin: 0; line-height: 1.5;">Map your technical support/resistance levels directly onto live trading views, saving them securely to your profile with offline synchronizations.</p>
+              </div>
+              <div style="margin-bottom: 15px;">
+                <h4 style="color: #f97316; font-size: 13px; font-weight: bold; margin: 0 0 5px 0; font-family: monospace;">💸 Perps Trading Simulator</h4>
+                <p style="color: #94a3b8; font-size: 12px; margin: 0; line-height: 1.5;">Test your macro strategies on our perpetual futures simulation room. Support up to 100x leverage limit for Ultimate members with responsive position ledger metrics.</p>
+              </div>
             </div>
 
             <p style="color: #cbd5e1; font-size: 14px; line-height: 1.6; margin-bottom: 30px;">
@@ -780,6 +1146,32 @@ Please output your analysis as a JSON object with the following fields:
     }
   });
 
+  // Admin APIs for Scheduler & Subscription diagnostics
+  app.get("/api/admin/clock-subscribers", (req, res) => {
+    try {
+      const subscribers = getSubscribers();
+      res.json({ count: subscribers.length, subscribers });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || "Failed to fetch subscribers" });
+    }
+  });
+
+  app.post("/api/admin/trigger-clock-update", async (req, res) => {
+    try {
+      console.log("[Admin API] Manually triggering 7-day clock update to all subscribers...");
+      await sendWeeklyClockUpdate();
+      
+      const state = getSchedulerState();
+      state.lastSentTime = Date.now();
+      saveSchedulerState(state);
+
+      res.json({ success: true, message: "7-day update triggered successfully to all subscribers." });
+    } catch (error: any) {
+      console.error("[Admin API Error]:", error);
+      res.status(500).json({ error: error.message || "Failed to trigger clock update" });
+    }
+  });
+
   // API Route for Unsubscribing Clock alerts
   app.get("/api/unsubscribe-clock", async (req, res) => {
     try {
@@ -789,6 +1181,12 @@ Please output your analysis as a JSON object with the following fields:
       }
 
       console.log(`[Clock Unsubscribe] Unsubscribing email: ${email}`);
+
+      // Remove from persistent subscribers list
+      const subscribers = getSubscribers();
+      const updated = subscribers.filter(e => e.toLowerCase() !== email.toLowerCase());
+      saveSubscribers(updated);
+      console.log(`[Clock Unsubscribe] Unsubscribed email and saved updated list: ${email}`);
 
       // We send back a beautiful fully responsive success webpage styled in our Slate Theme!
       const successHtml = `
@@ -896,6 +1294,8 @@ Please output your analysis as a JSON object with the following fields:
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
+    // Start the Bear Market Bottom Countdown Clock 7-day scheduler
+    runClockScheduler();
   });
 }
 
