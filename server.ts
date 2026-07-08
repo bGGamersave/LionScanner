@@ -1138,6 +1138,7 @@ Explore Active Swarm Tools at ${appUrl}
 
 To unsubscribe, go to ${unsubscribeUrl}`;
 
+      let previewUrl = "";
       // Check if SMTP is configured, else fallback to console logging
       if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
         const transporter = nodemailer.createTransport({
@@ -1160,15 +1161,34 @@ To unsubscribe, go to ${unsubscribeUrl}`;
         
         console.log(`[Clock Subscription] Real email successfully sent to ${email}`);
       } else {
-        console.log(`\n================== SIMULATED EMAIL SENT ==================`);
+        const testAccount = await nodemailer.createTestAccount();
+        const transporter = nodemailer.createTransport({
+          host: "smtp.ethereal.email",
+          port: 587,
+          secure: false,
+          auth: {
+            user: testAccount.user,
+            pass: testAccount.pass
+          }
+        });
+
+        const info = await transporter.sendMail({
+          from: '"Lions Swarm AI" <test@lions-swarm.io>',
+          to: email,
+          subject: "🦁 Welcome: Weekly Bear Market Bottom Countdown Updates Enabled",
+          text: textContent,
+          html: emailHtml
+        });
+
+        previewUrl = nodemailer.getTestMessageUrl(info) || "";
+
+        console.log(`\n================== TEST EMAIL SENT (ETHEREAL) ==================`);
         console.log(`To: ${email}`);
-        console.log(`Subject: 🦁 Welcome: Weekly Bear Market Bottom Countdown Updates Enabled`);
-        console.log(`Text Content:\n${textContent}\n`);
-        console.log(`Content HTML:\n${emailHtml}`);
-        console.log(`==========================================================\n`);
+        console.log(`Preview URL: ${previewUrl}`);
+        console.log(`================================================================\n`);
       }
 
-      res.json({ success: true, message: "Welcome email sent successfully." });
+      res.json({ success: true, message: "Welcome email sent successfully.", previewUrl });
 
     } catch (error: any) {
       console.error("[Clock Subscription Error]:", error);

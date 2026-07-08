@@ -29,6 +29,7 @@ export default function FullPortTimer() {
   });
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState('');
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   const [isMobile, setIsMobile] = useState(false);
 
@@ -111,8 +112,12 @@ export default function FullPortTimer() {
       localStorage.setItem('swarm_weekly_reminders', JSON.stringify(updated));
       
       if (response.ok) {
+        const data = await response.json();
         setStatus('success');
         setErrorMessage(isReplacement ? 'Your active subscription email has been updated. A welcome confirmation has been sent!' : 'A welcome confirmation email has been sent!');
+        if (data.previewUrl) {
+          setPreviewUrl(data.previewUrl);
+        }
       } else {
         const errData = await response.json();
         setStatus('success'); // Still succeed locally
@@ -241,7 +246,7 @@ export default function FullPortTimer() {
 
           <form onSubmit={handleSubscribe} className="flex flex-col sm:flex-row gap-3 w-full">
             <div className="relative flex-1">
-              <Mail className="absolute left-3.5 top-3 h-4.5 w-4.5 text-muted-foreground" />
+              <Mail className="absolute left-4 top-3.5 h-5 w-5 text-orange-500/70" />
               <Input
                 type="email"
                 required
@@ -250,14 +255,14 @@ export default function FullPortTimer() {
                   setEmail(e.target.value);
                   if (status === 'error') setStatus('idle');
                 }}
-                placeholder="Enter your email address"
-                className="pl-11 h-11 font-sans border-border/60 bg-background/50 focus-visible:ring-orange-500/50 rounded-lg text-sm"
+                placeholder="Enter your email address to receive alerts..."
+                className="pl-12 h-12 bg-black/60 border-orange-500/30 focus-visible:ring-1 focus-visible:ring-orange-500/50 text-orange-100 placeholder:text-slate-500 font-mono text-sm shadow-inner rounded-xl transition-all"
               />
             </div>
             <Button 
               type="submit" 
-              disabled={status === 'loading'}
-              className="bg-orange-500 hover:bg-orange-600 text-white font-mono text-xs uppercase tracking-widest h-11 px-7 cursor-pointer rounded-lg font-bold"
+              disabled={status === 'loading' || !email}
+              className="h-12 px-8 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-black font-black font-mono tracking-widest text-xs transition-all shadow-[0_0_15px_rgba(249,115,22,0.4)] hover:shadow-[0_0_25px_rgba(249,115,22,0.6)] rounded-xl shrink-0 cursor-pointer"
             >
               {status === 'loading' ? (
                 <>
@@ -265,22 +270,33 @@ export default function FullPortTimer() {
                   Securing...
                 </>
               ) : (
-                'Remind Me'
+                <>
+                  REMIND ME <Sparkles className="w-4 h-4 ml-2 text-black/80" />
+                </>
               )}
             </Button>
           </form>
 
           {/* Toast / Status States */}
           {status === 'success' && (
-            <div className="mt-4 flex items-center gap-3 p-3.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 text-xs text-left">
-              <Check className="w-5 h-5 shrink-0" />
-              <div>
-                <span className="font-bold block mb-0.5">
-                  {errorMessage ? 'Subscription Updated!' : 'Subscription Confirmed!'}
-                </span> 
-                {errorMessage || 'You will receive weekly reminders on your email to hold your dollars until October 1, 2026.'}
-                <span className="block mt-1 text-[10px] text-emerald-500/80 italic font-mono">Limit: 1 email address per account</span>
+            <div className="mt-4 flex flex-col items-start gap-2 p-3.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 text-xs text-left">
+              <div className="flex items-center gap-3">
+                <Check className="w-5 h-5 shrink-0" />
+                <div>
+                  <span className="font-bold block mb-0.5">
+                    {errorMessage ? 'Subscription Updated!' : 'Subscription Confirmed!'}
+                  </span> 
+                  {errorMessage || 'You will receive weekly reminders on your email to hold your dollars until October 1, 2026.'}
+                  <span className="block mt-1 text-[10px] text-emerald-500/80 italic font-mono">Limit: 1 email address per account</span>
+                </div>
               </div>
+              {previewUrl && (
+                <div className="mt-2 w-full pt-2 border-t border-emerald-500/20">
+                  <a href={previewUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 font-mono text-[10px] uppercase text-emerald-400 hover:text-emerald-300 transition-colors underline underline-offset-4">
+                    <Sparkles className="w-3 h-3" /> View test email generated for you
+                  </a>
+                </div>
+              )}
             </div>
           )}
 
