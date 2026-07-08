@@ -2,6 +2,7 @@ import {
   Activity,
   BarChart2,
   Bell,
+  Bot,
   Camera,
   ChevronDown,
   LayoutDashboard,
@@ -20,7 +21,8 @@ import {
   Loader2,
   X,
   RefreshCw,
-  Lock
+  Lock,
+  Gauge
 } from 'lucide-react';
 import React, { useState, useEffect, useRef } from 'react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -38,6 +40,8 @@ import Snapshots, { SnapshotData } from './components/Snapshots';
 import AIChat from './components/AIChat';
 import PerpsTrading from './components/PerpsTrading';
 import FullPortTimer from './components/FullPortTimer';
+import StrategyBuilder from './components/StrategyBuilder';
+import CycleMonitor from './components/CycleMonitor';
 import ProfileModal from './components/ProfileModal';
 import SmartContractPayment from './components/SmartContractPayment';
 import WalletDetailsModal from './components/WalletDetailsModal';
@@ -99,11 +103,19 @@ function renderMarkdownContent(text: string) {
 
 export default function App() {
   const [isDark, setIsDark] = useState(false);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'perps' | 'snapshots'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'perps' | 'snapshots' | 'strategy' | 'monitor'>('dashboard');
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [selectedSnapshot, setSelectedSnapshot] = useState<SnapshotData | null>(null);
   const [activeInterval, setActiveInterval] = useState<string>('D');
   const [aiInitialPrompt, setAiInitialPrompt] = useState<string | null>(null);
+
+  // --- Quantitative Strategy Hub State ---
+  const [strategyCycleHigh, setStrategyCycleHigh] = useState<number>(69000);
+  const [strategyCycleLow, setStrategyCycleLow] = useState<number>(15500);
+  const [strategySimPrice, setStrategySimPrice] = useState<number>(45000);
+  const [strategyGreenDotTimeframes, setStrategyGreenDotTimeframes] = useState<string[]>([]);
+  const [strategyLeverage, setStrategyLeverage] = useState<number>(10);
+  const [strategySymbol, setStrategySymbol] = useState<string>("BINANCE:BTCUSDT");
 
   const [activeSymbol, setActiveSymbol] = useState<string>('BINANCE:BTCUSDT');
   const [activeSymbolLabel, setActiveSymbolLabel] = useState<string>('BTC / USDT');
@@ -739,6 +751,24 @@ Establish position in the current accumulation range with a stop loss below **$$
             >
               <Camera className="mr-2 h-4 w-4" />
               My Snapshots
+            </Button>
+            <Button 
+              variant={activeTab === 'strategy' ? 'secondary' : 'ghost'} 
+              className={`w-full justify-start ${activeTab !== 'strategy' ? 'text-muted-foreground hover:text-foreground' : ''}`}
+              onClick={() => setActiveTab('strategy')}
+            >
+              <Bot className="mr-2 h-4 w-4 text-orange-500" />
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-amber-500 font-bold">Strategy Builder</span>
+              <Badge variant="outline" className="ml-auto border-orange-500/30 text-orange-400 text-[8px] font-mono font-bold">QUANT</Badge>
+            </Button>
+            <Button 
+              variant={activeTab === 'monitor' ? 'secondary' : 'ghost'} 
+              className={`w-full justify-start ${activeTab !== 'monitor' ? 'text-muted-foreground hover:text-foreground' : ''}`}
+              onClick={() => setActiveTab('monitor')}
+            >
+              <Gauge className="mr-2 h-4 w-4 text-orange-400" />
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-400 via-amber-500 to-yellow-500 font-bold">Cycle Monitor</span>
+              <Badge variant="outline" className="ml-auto border-orange-500/30 text-orange-400 text-[8px] font-mono font-bold">ENGINE</Badge>
             </Button>
 
             {/* Membership Status Section */}
@@ -1483,6 +1513,27 @@ Can you perform an advanced confirmation analyze of this recommendation using co
                     setIsChatOpen(true);
                   }}
                 />
+              ) : activeTab === 'strategy' ? (
+                <StrategyBuilder 
+                  strategyCycleHigh={strategyCycleHigh}
+                  setStrategyCycleHigh={setStrategyCycleHigh}
+                  strategyCycleLow={strategyCycleLow}
+                  setStrategyCycleLow={setStrategyCycleLow}
+                  strategySimPrice={strategySimPrice}
+                  setStrategySimPrice={setStrategySimPrice}
+                  strategyGreenDotTimeframes={strategyGreenDotTimeframes}
+                  setStrategyGreenDotTimeframes={setStrategyGreenDotTimeframes}
+                  strategyLeverage={strategyLeverage}
+                  setStrategyLeverage={setStrategyLeverage}
+                  strategySymbol={strategySymbol}
+                  setStrategySymbol={setStrategySymbol}
+                  onSendToAI={(prompt) => {
+                    setAiInitialPrompt(prompt);
+                    setIsChatOpen(true);
+                  }}
+                />
+              ) : activeTab === 'monitor' ? (
+                <CycleMonitor />
               ) : (
                 <Snapshots 
                   onAnalyze={handleAnalyzeSnapshot} 
@@ -1524,6 +1575,15 @@ Can you perform an advanced confirmation analyze of this recommendation using co
             >
               <Camera className="w-5 h-5" />
               <span>Snaps</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('strategy')}
+              className={`flex flex-col items-center justify-center gap-1 text-[9px] font-mono uppercase tracking-widest font-bold transition-all duration-200 cursor-pointer ${
+                activeTab === 'strategy' ? 'text-primary' : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <Bot className="w-5 h-5" />
+              <span>Quant</span>
             </button>
             <button
               onClick={() => setIsChatOpen(!isChatOpen)}

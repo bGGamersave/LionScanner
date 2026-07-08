@@ -974,11 +974,15 @@ Please output your analysis as a JSON object with the following fields:
       let hours = "00";
       let minutes = "00";
       let seconds = "00";
+      let daysVal = 0;
+      let hoursVal = 0;
+      let minutesVal = 0;
+      let secondsVal = 0;
       if (difference > 0) {
-        const daysVal = Math.floor(difference / (1000 * 60 * 60 * 24));
-        const hoursVal = Math.floor((difference / (1000 * 60 * 60)) % 24);
-        const minutesVal = Math.floor((difference / 1000 / 60) % 60);
-        const secondsVal = Math.floor((difference / 1000) % 60);
+        daysVal = Math.floor(difference / (1000 * 60 * 60 * 24));
+        hoursVal = Math.floor((difference / (1000 * 60 * 60)) % 24);
+        minutesVal = Math.floor((difference / 1000 / 60) % 60);
+        secondsVal = Math.floor((difference / 1000) % 60);
         days = String(daysVal).padStart(3, '0');
         hours = String(hoursVal).padStart(2, '0');
         minutes = String(minutesVal).padStart(2, '0');
@@ -1060,6 +1064,13 @@ Please output your analysis as a JSON object with the following fields:
                 <div style="color: #94a3b8; font-size: 9px; font-family: monospace; letter-spacing: 1px; text-transform: uppercase; margin-top: 5px; font-weight: bold;">Seconds</div>
               </div>
 
+              <div style="margin-top: 20px; border-top: 1px dashed rgba(249, 115, 22, 0.2); padding-top: 15px;">
+                <p style="color: #f97316; font-size: 12px; font-family: monospace; font-weight: bold; margin: 0 0 5px 0; text-transform: uppercase;">📝 TEXT SNAPSHOT OF REMAINING TIME:</p>
+                <p style="color: #cbd5e1; font-size: 15px; font-family: monospace; font-weight: bold; margin: 0;">
+                  ${daysVal} days, ${hoursVal} hours, ${minutesVal} minutes, ${secondsVal} seconds
+                </p>
+              </div>
+
               <p style="color: #64748b; font-size: 11px; margin: 15px 0 0 0;">Target Date: <strong style="color: #cbd5e1;">October 1, 2026</strong> (00:00:00 Local)</p>
             </div>
 
@@ -1110,6 +1121,23 @@ Please output your analysis as a JSON object with the following fields:
         </div>
       `;
 
+      const textContent = `🦁 LIONS SWARM AI: Bear Market Bottom Countdown Clock
+
+Thanks for Subscribing!
+
+Thank you so much for subscribing to the Bear Market Bottom Countdown Clock alerts. We're thrilled to have you join our elite swarm of disciplined market observers!
+
+--------------------------------------------------
+🔴 LIVE CLOCK SNAPSHOT AT SUBSCRIPTION:
+Time Remaining: ${daysVal} Days, ${hoursVal} Hours, ${minutesVal} Minutes, ${secondsVal} Seconds left until October 1st, 2026.
+--------------------------------------------------
+
+You will receive a snapshot of the countdown clock every 7 days at 7:00 AM PST directly in your inbox.
+
+Explore Active Swarm Tools at ${appUrl}
+
+To unsubscribe, go to ${unsubscribeUrl}`;
+
       // Check if SMTP is configured, else fallback to console logging
       if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
         const transporter = nodemailer.createTransport({
@@ -1126,6 +1154,7 @@ Please output your analysis as a JSON object with the following fields:
           from: process.env.SMTP_FROM || `"Lions Swarm AI" <${process.env.SMTP_USER}>`,
           to: email,
           subject: "🦁 Welcome: Weekly Bear Market Bottom Countdown Updates Enabled",
+          text: textContent,
           html: emailHtml
         });
         
@@ -1134,7 +1163,8 @@ Please output your analysis as a JSON object with the following fields:
         console.log(`\n================== SIMULATED EMAIL SENT ==================`);
         console.log(`To: ${email}`);
         console.log(`Subject: 🦁 Welcome: Weekly Bear Market Bottom Countdown Updates Enabled`);
-        console.log(`Content:\n${emailHtml}`);
+        console.log(`Text Content:\n${textContent}\n`);
+        console.log(`Content HTML:\n${emailHtml}`);
         console.log(`==========================================================\n`);
       }
 
