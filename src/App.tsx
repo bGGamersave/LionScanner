@@ -34,6 +34,7 @@ import { Progress } from '@/components/ui/progress';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 
 import Chart from './components/Chart';
 import Snapshots, { SnapshotData } from './components/Snapshots';
@@ -229,6 +230,7 @@ export default function App() {
   const [isRecalculating, setIsRecalculating] = useState(false);
   const [recalcStep, setRecalcStep] = useState<string>('');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [priceAlerts, setPriceAlerts] = useState<{ upper: string; lower: string }>({ upper: '', lower: '' });
 
   // API Pulls State Tracking
   const [dailyApiCount, setDailyApiCount] = useState<number>(() => {
@@ -534,6 +536,29 @@ Establish position in the current accumulation range with a stop loss below **$$
     const interval = setInterval(fetchGlobalQuotes, 30000);
     return () => clearInterval(interval);
   }, [activeSymbol, dailyApiCount, userTier]);
+
+  useEffect(() => {
+    const ticker = activeSymbol.replace('BINANCE:', '').replace('USDT', '');
+    const currentPrice = globalPrices[ticker]?.price;
+    if (!currentPrice) return;
+
+    if (priceAlerts.upper) {
+      const upper = parseFloat(priceAlerts.upper);
+      if (currentPrice >= upper) {
+        setToastMessage(`🚨 PRICE ALERT: ${activeSymbolLabel} crossed UPPER threshold of $${upper.toLocaleString()}!`);
+        setTimeout(() => setToastMessage(null), 8000);
+        setPriceAlerts(prev => ({ ...prev, upper: '' }));
+      }
+    }
+    if (priceAlerts.lower) {
+      const lower = parseFloat(priceAlerts.lower);
+      if (currentPrice <= lower) {
+        setToastMessage(`🚨 PRICE ALERT: ${activeSymbolLabel} crossed LOWER threshold of $${lower.toLocaleString()}!`);
+        setTimeout(() => setToastMessage(null), 8000);
+        setPriceAlerts(prev => ({ ...prev, lower: '' }));
+      }
+    }
+  }, [globalPrices, activeSymbol, activeSymbolLabel, priceAlerts]);
 
   const [walletAddress, setWalletAddress] = useState<string | null>(() => {
     return localStorage.getItem('swarm_wallet_address') || null;
@@ -964,10 +989,54 @@ Establish position in the current accumulation range with a stop loss below **$$
                   {/* Timeframe Selector Tabs */}
                   <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-card border border-border/80 backdrop-blur rounded-xl p-4 shadow-sm">
                     <div className="space-y-1 border-l-2 border-orange-500/80 pl-3.5 py-0.5" id="swarm-strategy-room-header">
-                      <h3 className="text-sm font-semibold tracking-tight uppercase font-mono text-primary flex items-center gap-1.5">
-                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                        Lions 24H Swarm Strategy Room
-                      </h3>
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-sm font-semibold tracking-tight uppercase font-mono text-primary flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                          Lions 24H Swarm Strategy Room
+                        </h3>
+                        <Dialog>
+                          <DialogTrigger className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors hover:bg-orange-500/10 hover:text-orange-500 h-6 w-6 ml-1 cursor-pointer">
+                            <Settings className="w-3.5 h-3.5" />
+                          </DialogTrigger>
+                          <DialogContent className="sm:max-w-md border-border bg-card">
+                            <DialogHeader>
+                              <DialogTitle className="font-mono text-orange-500 flex items-center gap-2">
+                                <Settings className="w-4 h-4" /> Price Alerts - {activeSymbolLabel}
+                              </DialogTitle>
+                            </DialogHeader>
+                            <div className="space-y-4 py-4">
+                              <p className="text-xs text-muted-foreground">
+                                Set custom price thresholds for {activeSymbolLabel}. You will receive a toast notification when the live price crosses these levels.
+                              </p>
+                              <div className="space-y-2">
+                                <label className="text-xs font-mono font-bold text-foreground">Upper Threshold (USD)</label>
+                                <Input 
+                                  type="number" 
+                                  placeholder={`e.g. ${(parseFloat(String(livePrice || '0').replace(/,/g, '')) * 1.05).toFixed(2)}`}
+                                  value={priceAlerts.upper}
+                                  onChange={(e) => setPriceAlerts(prev => ({ ...prev, upper: e.target.value }))}
+                                  className="font-mono bg-background/50 border-border"
+                                />
+                              </div>
+                              <div className="space-y-2">
+                                <label className="text-xs font-mono font-bold text-foreground">Lower Threshold (USD)</label>
+                                <Input 
+                                  type="number" 
+                                  placeholder={`e.g. ${(parseFloat(String(livePrice || '0').replace(/,/g, '')) * 0.95).toFixed(2)}`}
+                                  value={priceAlerts.lower}
+                                  onChange={(e) => setPriceAlerts(prev => ({ ...prev, lower: e.target.value }))}
+                                  className="font-mono bg-background/50 border-border"
+                                />
+                              </div>
+                              <div className="pt-2">
+                                <p className="text-[10px] text-orange-500/80 font-mono italic">
+                                  Alerts will reset automatically once triggered.
+                                </p>
+                              </div>
+                            </div>
+                          </DialogContent>
+                        </Dialog>
+                      </div>
                       <p className="text-xs text-muted-foreground">Select active timeframe for live Market Cipher B and volume profile confluences.</p>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
