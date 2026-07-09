@@ -878,7 +878,7 @@ Please output your analysis as a JSON object with the following fields:
 
         try {
           await transporter.sendMail({
-            from: process.env.SMTP_FROM || `"Lions Swarm AI" <${process.env.SMTP_USER}>`,
+            from: '"Lions Swarm AI" <brandon@gamersave.com>',
             to: email,
             subject: `🦁 7-Day Update: ${daysVal} Days Left to Bear Market Bottom!`,
             html: emailHtml
@@ -1152,7 +1152,7 @@ To unsubscribe, go to ${unsubscribeUrl}`;
         });
 
         await transporter.sendMail({
-          from: process.env.SMTP_FROM || `"Lions Swarm AI" <${process.env.SMTP_USER}>`,
+          from: '"Lions Swarm AI" <brandon@gamersave.com>',
           to: email,
           subject: "🦁 Welcome: Weekly Bear Market Bottom Countdown Updates Enabled",
           text: textContent,
@@ -1173,7 +1173,7 @@ To unsubscribe, go to ${unsubscribeUrl}`;
         });
 
         const info = await transporter.sendMail({
-          from: '"Lions Swarm AI" <test@lions-swarm.io>',
+          from: '"Lions Swarm AI" <brandon@gamersave.com>',
           to: email,
           subject: "🦁 Welcome: Weekly Bear Market Bottom Countdown Updates Enabled",
           text: textContent,
