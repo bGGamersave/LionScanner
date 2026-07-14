@@ -65,6 +65,69 @@ export default function CycleMonitor() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
+  const [wsConnected, setWsConnected] = useState<boolean>(false);
+  const wsRef = React.useRef<WebSocket | null>(null);
+
+  // Set up WebSocket listener
+  useEffect(() => {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}`;
+    let socket: WebSocket | null = null;
+    let reconnectTimeout: any = null;
+
+    function connect() {
+      socket = new WebSocket(wsUrl);
+      wsRef.current = socket;
+
+      socket.onopen = () => {
+        setWsConnected(true);
+      };
+
+      socket.onmessage = (event) => {
+        try {
+          const parsed = JSON.parse(event.data);
+          if (parsed.type === "live-update" && parsed.data) {
+            const { btcPrice, ethBtcRatio, pillars: remotePillars } = parsed.data.cycleMonitor;
+            setCurrentBtcPrice(Math.round(btcPrice));
+            setEthBtcRatio(parseFloat(ethBtcRatio.toFixed(4)));
+            
+            setPillars(prev => prev.map(localPillar => {
+              const remoteMatch = remotePillars.find((rp: any) => rp.id === localPillar.id);
+              if (remoteMatch) {
+                return {
+                  ...localPillar,
+                  currentScore: remoteMatch.currentScore,
+                  baselineVal: remoteMatch.baselineVal
+                };
+              }
+              return localPillar;
+            }));
+          }
+        } catch (e) {
+          console.error("Error reading websocket message in CycleMonitor:", e);
+        }
+      };
+
+      socket.onclose = () => {
+        setWsConnected(false);
+        wsRef.current = null;
+        reconnectTimeout = setTimeout(connect, 3000);
+      };
+
+      socket.onerror = (err) => {
+        console.error("WebSocket error:", err);
+        socket?.close();
+      };
+    }
+
+    connect();
+
+    return () => {
+      if (socket) socket.close();
+      if (reconnectTimeout) clearTimeout(reconnectTimeout);
+    };
+  }, []);
+
   // Compute Days since October 6, 2025
   useEffect(() => {
     const today = new Date();
@@ -126,6 +189,22 @@ export default function CycleMonitor() {
 
   const handlePillarScoreChange = (id: string, newScore: number) => {
     setPillars(prev => prev.map(p => p.id === id ? { ...p, currentScore: Math.max(0, Math.min(100, newScore)) } : p));
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({
+        type: "set-pillar",
+        data: { id, score: newScore }
+      }));
+    }
+  };
+
+  const handleBtcPriceChange = (val: number) => {
+    setCurrentBtcPrice(val);
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({
+        type: "set-btc-price",
+        data: { price: val }
+      }));
+    }
   };
 
   const handleResetPillars = () => {
@@ -135,6 +214,13 @@ export default function CycleMonitor() {
     setErrorMessage(null);
     setSuccessMessage("Pillar scores reset to baseline configuration!");
     setTimeout(() => setSuccessMessage(null), 3000);
+
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({
+        type: "set-btc-price",
+        data: { price: 65296 }
+      }));
+    }
   };
 
   const triggerSuccess = (msg: string) => {
@@ -237,6 +323,9 @@ Steady accumulation in systematic intervals remains the high-confluence playbook
             <h1 className="text-xl font-bold font-mono tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-orange-400 via-amber-500 to-yellow-500 uppercase">
               Bitcoin Cycle Monitor & Risk Engine
             </h1>
+            <Badge className={`${wsConnected ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-rose-500/10 text-rose-400 border-rose-500/20'} border font-mono text-[9px] uppercase font-bold px-2 py-0.5 shrink-0`}>
+              {wsConnected ? '● WS Live' : '○ WS Offline'}
+            </Badge>
           </div>
           <p className="text-xs text-slate-400 mt-1 max-w-2xl leading-normal font-sans">
             Cyclical risk engine tracking normalized macro coordinates and deployment tranches. Anchored to the visual ground truth metrics of the 11 Core Pillars.
@@ -362,7 +451,7 @@ Steady accumulation in systematic intervals remains the high-confluence playbook
                   max={130000}
                   step={500}
                   value={currentBtcPrice}
-                  onChange={(e) => setCurrentBtcPrice(Number(e.target.value))}
+                  onChange={(e) => handleBtcPriceChange(Number(e.target.value))}
                   className="w-full accent-orange-500 h-1 bg-[#07090e] rounded cursor-pointer"
                 />
                 <div className="flex justify-between text-[9px] text-slate-500">

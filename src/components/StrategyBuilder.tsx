@@ -81,6 +81,77 @@ export default function StrategyBuilder({
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [copiedLabel, setCopiedLabel] = useState<string | null>(null);
 
+  const [liveMarketPrices, setLiveMarketPrices] = useState<Record<string, number>>({
+    "BINANCE:BTCUSDT": 61250,
+    "BINANCE:ETHUSDT": 3450,
+    "BINANCE:SOLUSDT": 142,
+    "BINANCE:BNBUSDT": 575,
+    "BINANCE:XRPUSDT": 0.56,
+  });
+  const [isLiveFollowing, setIsLiveFollowing] = useState<boolean>(false);
+  const [wsConnected, setWsConnected] = useState<boolean>(false);
+
+  // Set up WebSocket listener
+  useEffect(() => {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}`;
+    let socket: WebSocket | null = null;
+    let reconnectTimeout: any = null;
+
+    function connect() {
+      socket = new WebSocket(wsUrl);
+
+      socket.onopen = () => {
+        setWsConnected(true);
+      };
+
+      socket.onmessage = (event) => {
+        try {
+          const parsed = JSON.parse(event.data);
+          if (parsed.type === "live-update" && parsed.data && parsed.data.prices) {
+            const prices = parsed.data.prices;
+            const updated: Record<string, number> = {};
+            if (prices.BTC) updated["BINANCE:BTCUSDT"] = prices.BTC.price;
+            if (prices.ETH) updated["BINANCE:ETHUSDT"] = prices.ETH.price;
+            if (prices.SOL) updated["BINANCE:SOLUSDT"] = prices.SOL.price;
+            if (prices.BNB) updated["BINANCE:BNBUSDT"] = prices.BNB.price;
+            if (prices.XRP) updated["BINANCE:XRPUSDT"] = prices.XRP.price;
+
+            setLiveMarketPrices(prev => ({ ...prev, ...updated }));
+
+            // If live following is enabled, synchronize the price
+            if (isLiveFollowing) {
+              const activeKey = strategySymbol;
+              if (updated[activeKey]) {
+                const livePrice = parseFloat(updated[activeKey].toFixed(activeKey === "BINANCE:XRPUSDT" ? 4 : 2));
+                setStrategySimPrice(livePrice);
+              }
+            }
+          }
+        } catch (e) {
+          console.error("Error parsing WS price inside StrategyBuilder:", e);
+        }
+      };
+
+      socket.onclose = () => {
+        setWsConnected(false);
+        reconnectTimeout = setTimeout(connect, 3000);
+      };
+
+      socket.onerror = (err) => {
+        console.error("WS error inside StrategyBuilder:", err);
+        socket?.close();
+      };
+    }
+
+    connect();
+
+    return () => {
+      if (socket) socket.close();
+      if (reconnectTimeout) clearTimeout(reconnectTimeout);
+    };
+  }, [isLiveFollowing, strategySymbol]);
+
   // --- HyperLiquid Permission and Delegation state ---
   const [hlPermission, setHlPermission] = useState({
     agentAddress: "0x892a0a2C3B4E4D3c6b2A1a3B4c5D6e7f8A9c0D12",
@@ -514,17 +585,22 @@ export default function StrategyBuilder({
                       {/* Connection A button */}
                       <Button 
                         size="sm"
-                        variant="outline"
-                        onClick={handleSetMarketPrice}
+                        variant={isLiveFollowing ? "default" : "outline"}
+                        onClick={() => {
+                          if (!isLiveFollowing) {
+                            handleSetMarketPrice();
+                          }
+                          setIsLiveFollowing(!isLiveFollowing);
+                        }}
                         disabled={isFetchingPrice}
-                        className="border-slate-800 text-xs font-mono h-auto"
+                        className={`text-xs font-mono h-auto transition-all ${isLiveFollowing ? 'bg-orange-500 hover:bg-orange-600 text-black border-orange-500' : 'border-slate-800 text-slate-400'}`}
                       >
                         {isFetchingPrice ? (
                           <RefreshCw className="w-3 h-3 animate-spin mr-1.5" />
                         ) : (
-                          <Activity className="w-3 h-3 text-orange-500 mr-1.5" />
+                          <Activity className={`w-3 h-3 mr-1.5 ${isLiveFollowing ? 'animate-pulse text-black' : 'text-orange-500'}`} />
                         )}
-                        Market Feed
+                        {isLiveFollowing ? 'WS Live Sync' : 'Sync WS Ticker'}
                       </Button>
                     </div>
                   </div>

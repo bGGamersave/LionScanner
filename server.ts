@@ -6,6 +6,7 @@ import cors from "cors";
 import dotenv from "dotenv";
 import nodemailer from "nodemailer";
 import { GoogleGenAI, Type } from "@google/genai";
+import { WebSocketServer, WebSocket } from "ws";
 
 dotenv.config();
 
@@ -1342,11 +1343,188 @@ To unsubscribe, go to ${unsubscribeUrl}`;
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
+  // Setup WebSocket Server to stream live prices and cycle monitor statistics
+  function setupWebSocketServer(httpServer: any) {
+    const wss = new WebSocketServer({ noServer: true });
+
+    httpServer.on("upgrade", (request: any, socket: any, head: any) => {
+      wss.handleUpgrade(request, socket, head, (ws) => {
+        wss.emit("connection", ws, request);
+      });
+    });
+
+    let livePrices = {
+      BTC: { price: 65296, change24h: 1.45, volume24h: 28400000000 },
+      ETH: { price: 3450, change24h: -0.35, volume24h: 15200000000 },
+      SOL: { price: 142.60, change24h: 5.75, volume24h: 3200000000 },
+      BNB: { price: 575.40, change24h: 0.85, volume24h: 1200000000 },
+      XRP: { price: 0.5624, change24h: -0.45, volume24h: 850000000 }
+    };
+
+    let livePillars = [
+      { id: "profit", name: "% Supply in Profit", baselineVal: "84.2%", baselineScore: 24, currentScore: 24, unit: "%", desc: "Measures percent of circulating coins whose cost basis is lower than current spot." },
+      { id: "ahr999", name: "AHR999 Index", baselineVal: "0.42", baselineScore: 12, currentScore: 12, unit: "index", desc: "Multiplicative oscillator tracking absolute value and 200DMA deviation." },
+      { id: "mvrv", name: "MVRV Z-Score", baselineVal: "1.15", baselineScore: 18, currentScore: 18, unit: "z-score", desc: "Standard deviations of market cap from realized cap distribution." },
+      { id: "puell", name: "Puell Multiple", baselineVal: "0.72", baselineScore: 15, currentScore: 15, unit: "multiple", desc: "Daily issuance value divided by 365-day moving average issuance." },
+      { id: "ma2y", name: "Price / 2Y MA Ratio", baselineVal: "0.88", baselineScore: 16, currentScore: 16, unit: "ratio", desc: "Spot price ratio compared to its 2-year simple moving average." },
+      { id: "res_risk", name: "Reserve Risk", baselineVal: "0.0012", baselineScore: 8, currentScore: 8, unit: "multiple", desc: "Tracks long-term holder confidence relative to current market price." },
+      { id: "mayer", name: "Mayer Multiple", baselineVal: "0.92", baselineScore: 14, currentScore: 14, unit: "multiple", desc: "Current price deviation from its 200-day simple moving average." },
+      { id: "fg_index", name: "Fear & Greed Index", baselineVal: "24/100", baselineScore: 24, currentScore: 24, unit: "index", desc: "Normalized multi-factor retail and sentiment tracker." },
+      { id: "rhodl", name: "RHODL Ratio", baselineVal: "342", baselineScore: 15, currentScore: 15, unit: "ratio", desc: "Ratio between 1-week and 1-2 year realized cap HODL bands." },
+      { id: "drawdown", name: "Drawdown Path (from ATH)", baselineVal: "-48.2%", baselineScore: 19, currentScore: 19, unit: "%", desc: "Percent peak-to-trough distance from the cycle absolute high." },
+      { id: "nupl", name: "NUPL", baselineVal: "0.32", baselineScore: 21, currentScore: 21, unit: "ratio", desc: "Net Unrealized Profit/Loss represents ratio of profit versus loss." }
+    ];
+
+    let btcPrice = 65296;
+    let ethBtcRatio = 0.029;
+
+    async function fetchRealWorldAnchor() {
+      try {
+        const btcQ = await resolveRealtimeQuote("BTC");
+        if (btcQ?.data?.BTC?.quote?.USD) {
+          const val = btcQ.data.BTC.quote.USD;
+          livePrices.BTC.price = val.price;
+          livePrices.BTC.change24h = val.percent_change_24h;
+          btcPrice = val.price;
+        }
+        const ethQ = await resolveRealtimeQuote("ETH");
+        if (ethQ?.data?.ETH?.quote?.USD) {
+          const val = ethQ.data.ETH.quote.USD;
+          livePrices.ETH.price = val.price;
+          livePrices.ETH.change24h = val.percent_change_24h;
+          ethBtcRatio = val.price / (btcPrice || 1);
+        }
+        const solQ = await resolveRealtimeQuote("SOL");
+        if (solQ?.data?.SOL?.quote?.USD) {
+          const val = solQ.data.SOL.quote.USD;
+          livePrices.SOL.price = val.price;
+          livePrices.SOL.change24h = val.percent_change_24h;
+        }
+        const bnbQ = await resolveRealtimeQuote("BNB");
+        if (bnbQ?.data?.BNB?.quote?.USD) {
+          const val = bnbQ.data.BNB.quote.USD;
+          livePrices.BNB.price = val.price;
+          livePrices.BNB.change24h = val.percent_change_24h;
+        }
+        const xrpQ = await resolveRealtimeQuote("XRP");
+        if (xrpQ?.data?.XRP?.quote?.USD) {
+          const val = xrpQ.data.XRP.quote.USD;
+          livePrices.XRP.price = val.price;
+          livePrices.XRP.change24h = val.percent_change_24h;
+        }
+      } catch (err: any) {
+        console.log("[WS Price Anchor Error]", err.message);
+      }
+    }
+
+    fetchRealWorldAnchor();
+    const anchorInterval = setInterval(fetchRealWorldAnchor, 30000);
+
+    const broadcastInterval = setInterval(() => {
+      // Slightly fluctuate prices
+      livePrices.BTC.price += (Math.random() - 0.5) * 20;
+      livePrices.ETH.price += (Math.random() - 0.5) * 1.5;
+      livePrices.SOL.price += (Math.random() - 0.5) * 0.15;
+      livePrices.BNB.price += (Math.random() - 0.5) * 0.40;
+      livePrices.XRP.price += (Math.random() - 0.5) * 0.0005;
+
+      btcPrice = livePrices.BTC.price;
+      ethBtcRatio = livePrices.ETH.price / livePrices.BTC.price;
+
+      livePillars = livePillars.map(p => {
+        const delta = Math.floor(Math.random() * 3) - 1; // -1, 0, or 1
+        const newScore = Math.max(0, Math.min(100, p.currentScore + delta));
+        
+        let newVal = p.baselineVal;
+        if (p.id === 'profit') {
+          newVal = `${(newScore * 3.5).toFixed(1)}%`;
+        } else if (p.id === 'ahr999') {
+          newVal = `${(newScore * 0.035).toFixed(2)}`;
+        } else if (p.id === 'mvrv') {
+          newVal = `${(newScore * 0.095).toFixed(2)}`;
+        } else if (p.id === 'puell') {
+          newVal = `${(newScore * 0.06).toFixed(2)}`;
+        } else if (p.id === 'ma2y') {
+          newVal = `${(newScore * 0.07).toFixed(2)}`;
+        } else if (p.id === 'res_risk') {
+          newVal = `${(newScore * 0.00015).toFixed(4)}`;
+        } else if (p.id === 'mayer') {
+          newVal = `${(newScore * 0.075).toFixed(2)}`;
+        } else if (p.id === 'fg_index') {
+          newVal = `${newScore}/100`;
+        } else if (p.id === 'rhodl') {
+          newVal = `${Math.round(newScore * 28.5)}`;
+        } else if (p.id === 'drawdown') {
+          newVal = `-${(100 - newScore * 1.2).toFixed(1)}%`;
+        } else if (p.id === 'nupl') {
+          newVal = `${(newScore * 0.025).toFixed(2)}`;
+        }
+
+        return {
+          ...p,
+          currentScore: newScore,
+          baselineVal: newVal
+        };
+      });
+
+      const payload = JSON.stringify({
+        type: "live-update",
+        data: {
+          prices: livePrices,
+          cycleMonitor: {
+            btcPrice,
+            ethBtcRatio,
+            pillars: livePillars
+          }
+        }
+      });
+
+      wss.clients.forEach((client) => {
+        if (client.readyState === WebSocket.OPEN) {
+          client.send(payload);
+        }
+      });
+    }, 3000);
+
+    wss.on("connection", (ws: WebSocket) => {
+      const initialPayload = JSON.stringify({
+        type: "live-update",
+        data: {
+          prices: livePrices,
+          cycleMonitor: {
+            btcPrice,
+            ethBtcRatio,
+            pillars: livePillars
+          }
+        }
+      });
+      ws.send(initialPayload);
+
+      ws.on("message", (message: string) => {
+        try {
+          const parsed = JSON.parse(message);
+          if (parsed.type === "set-pillar") {
+            const { id, score } = parsed.data;
+            livePillars = livePillars.map(p => p.id === id ? { ...p, currentScore: score } : p);
+          } else if (parsed.type === "set-btc-price") {
+            const { price } = parsed.data;
+            livePrices.BTC.price = price;
+            btcPrice = price;
+          }
+        } catch (e: any) {
+          console.error("[WS Message Error]", e.message);
+        }
+      });
+    });
+  }
+
+  const server = app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
     // Start the Bear Market Bottom Countdown Clock 7-day scheduler
     runClockScheduler();
   });
+
+  setupWebSocketServer(server);
 }
 
 startServer();
