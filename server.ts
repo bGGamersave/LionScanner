@@ -10,6 +10,11 @@ import { WebSocketServer, WebSocket } from "ws";
 
 dotenv.config();
 
+// SMTP_FROM is the sender identity configured for the SMTP account. Most providers
+// (SES, SendGrid, Gmail, etc.) reject or silently drop mail sent "From" an address
+// that isn't verified against the authenticated SMTP_USER, so this must not be hardcoded.
+const EMAIL_FROM = process.env.SMTP_FROM || `"Lions Swarm AI" <${process.env.SMTP_USER || "brandon@gamersave.com"}>`;
+
 const FALLBACK_QUOTES: Record<string, { name: string; price: number; change_24h: number; volume: number; market_cap: number; high: number; low: number }> = {
   TSLA: { name: "Tesla, Inc.", price: 185.50, change_24h: 1.45, volume: 85400000, market_cap: 580000000000, high: 188.20, low: 183.10 },
   AAPL: { name: "Apple Inc.", price: 212.40, change_24h: -0.35, volume: 52100000, market_cap: 3250000000000, high: 214.50, low: 211.20 },
@@ -879,7 +884,7 @@ Please output your analysis as a JSON object with the following fields:
 
         try {
           await transporter.sendMail({
-            from: '"Lions Swarm AI" <brandon@gamersave.com>',
+            from: EMAIL_FROM,
             to: email,
             subject: `🦁 7-Day Update: ${daysVal} Days Left to Bear Market Bottom!`,
             html: emailHtml
@@ -1153,13 +1158,13 @@ To unsubscribe, go to ${unsubscribeUrl}`;
         });
 
         await transporter.sendMail({
-          from: '"Lions Swarm AI" <brandon@gamersave.com>',
+          from: EMAIL_FROM,
           to: email,
           subject: "🦁 Welcome: Weekly Bear Market Bottom Countdown Updates Enabled",
           text: textContent,
           html: emailHtml
         });
-        
+
         console.log(`[Clock Subscription] Real email successfully sent to ${email}`);
       } else {
         const testAccount = await nodemailer.createTestAccount();
@@ -1174,7 +1179,7 @@ To unsubscribe, go to ${unsubscribeUrl}`;
         });
 
         const info = await transporter.sendMail({
-          from: '"Lions Swarm AI" <brandon@gamersave.com>',
+          from: EMAIL_FROM,
           to: email,
           subject: "🦁 Welcome: Weekly Bear Market Bottom Countdown Updates Enabled",
           text: textContent,

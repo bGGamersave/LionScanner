@@ -96,6 +96,7 @@ export default function FullPortTimer() {
     }
 
     setStatus('loading');
+    setPreviewUrl(null);
 
     // Make API request to send welcome email and register subscription
     fetch('/api/subscribe-clock', {
@@ -107,33 +108,28 @@ export default function FullPortTimer() {
     })
     .then(async (response) => {
       const isReplacement = subscribedEmails.length > 0 && !subscribedEmails.includes(email.toLowerCase());
-      const updated = [email.toLowerCase()]; // Keep at most 1 email address
-      setSubscribedEmails(updated);
-      localStorage.setItem('swarm_weekly_reminders', JSON.stringify(updated));
-      
+      const data = await response.json().catch(() => ({}));
+
       if (response.ok) {
-        const data = await response.json();
+        const updated = [email.toLowerCase()]; // Keep at most 1 email address
+        setSubscribedEmails(updated);
+        localStorage.setItem('swarm_weekly_reminders', JSON.stringify(updated));
         setStatus('success');
         setErrorMessage(isReplacement ? 'Your active subscription email has been updated. A welcome confirmation has been sent!' : 'A welcome confirmation email has been sent!');
         if (data.previewUrl) {
           setPreviewUrl(data.previewUrl);
         }
       } else {
-        const errData = await response.json();
-        setStatus('success'); // Still succeed locally
-        setErrorMessage(isReplacement ? 'Your subscription was updated, but the welcome email failed: ' + (errData.error || '') : 'Subscribed locally, but failed to send welcome email: ' + (errData.error || ''));
+        // Do not claim success: the welcome email genuinely was not sent.
+        setStatus('error');
+        setErrorMessage(data.error || 'Failed to send the welcome email. Please try again.');
       }
       setEmail('');
     })
     .catch((error) => {
       console.error("Subscription API error:", error);
-      const isReplacement = subscribedEmails.length > 0 && !subscribedEmails.includes(email.toLowerCase());
-      const updated = [email.toLowerCase()];
-      setSubscribedEmails(updated);
-      localStorage.setItem('swarm_weekly_reminders', JSON.stringify(updated));
-      setStatus('success');
-      setErrorMessage(isReplacement ? 'Your active subscription email has been updated.' : 'Subscription enabled!');
-      setEmail('');
+      setStatus('error');
+      setErrorMessage('Could not reach the server. Please check your connection and try again.');
     });
   };
 
