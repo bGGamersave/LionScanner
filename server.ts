@@ -5,15 +5,106 @@ import axios from "axios";
 import cors from "cors";
 import dotenv from "dotenv";
 import nodemailer from "nodemailer";
+import { Resend } from "resend";
 import { GoogleGenAI, Type } from "@google/genai";
 import { WebSocketServer, WebSocket } from "ws";
 
 dotenv.config();
 
-// SMTP_FROM is the sender identity configured for the SMTP account. Most providers
-// (SES, SendGrid, Gmail, etc.) reject or silently drop mail sent "From" an address
-// that isn't verified against the authenticated SMTP_USER, so this must not be hardcoded.
-const EMAIL_FROM = process.env.SMTP_FROM || `"Lions Swarm AI" <${process.env.SMTP_USER || "brandon@gamersave.com"}>`;
+// Sender identity for all outbound mail. The domain must be verified with the
+// configured delivery provider (Resend / SMTP) or the message will be rejected.
+const EMAIL_FROM = process.env.EMAIL_FROM || process.env.SMTP_FROM || '"Lions Swarm AI" <noreply@lionscanner.net>';
+
+const resendClient = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
+
+interface OutboundEmail {
+  to: string;
+  subject: string;
+  html: string;
+  text?: string;
+}
+
+interface EmailSendResult {
+  delivered: boolean;
+  provider: "resend" | "smtp" | "ethereal" | "console";
+  previewUrl?: string;
+  error?: string;
+}
+
+async function sendEmail(msg: OutboundEmail): Promise<EmailSendResult> {
+  // 1) Resend (preferred once RESEND_API_KEY is set)
+  if (resendClient) {
+    try {
+      const { error } = await resendClient.emails.send({
+        from: EMAIL_FROM,
+        to: [msg.to],
+        subject: msg.subject,
+        html: msg.html,
+        text: msg.text,
+      });
+      if (error) {
+        console.error("[Email/Resend] Delivery error:", error);
+        return { delivered: false, provider: "resend", error: (error as any).message || String(error) };
+      }
+      console.log(`[Email/Resend] Delivered to ${msg.to}`);
+      return { delivered: true, provider: "resend" };
+    } catch (err: any) {
+      console.error("[Email/Resend] Threw:", err);
+      return { delivered: false, provider: "resend", error: err?.message || String(err) };
+    }
+  }
+
+  // 2) Generic SMTP fallback (kept for backward-compat with legacy deployments)
+  if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
+    try {
+      const transporter = nodemailer.createTransport({
+        host: process.env.SMTP_HOST,
+        port: parseInt(process.env.SMTP_PORT || "587"),
+        secure: process.env.SMTP_PORT === "465",
+        auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+      });
+      await transporter.sendMail({
+        from: EMAIL_FROM,
+        to: msg.to,
+        subject: msg.subject,
+        html: msg.html,
+        text: msg.text,
+      });
+      console.log(`[Email/SMTP] Delivered to ${msg.to}`);
+      return { delivered: true, provider: "smtp" };
+    } catch (err: any) {
+      console.error("[Email/SMTP] Threw:", err);
+      return { delivered: false, provider: "smtp", error: err?.message || String(err) };
+    }
+  }
+
+  // 3) Local-dev preview via Ethereal (no real delivery)
+  try {
+    const testAccount = await nodemailer.createTestAccount();
+    const transporter = nodemailer.createTransport({
+      host: "smtp.ethereal.email",
+      port: 587,
+      secure: false,
+      auth: { user: testAccount.user, pass: testAccount.pass },
+    });
+    const info = await transporter.sendMail({
+      from: EMAIL_FROM,
+      to: msg.to,
+      subject: msg.subject,
+      html: msg.html,
+      text: msg.text,
+    });
+    const previewUrl = nodemailer.getTestMessageUrl(info) || undefined;
+    console.log(`[Email/Ethereal] Preview-only send to ${msg.to} → ${previewUrl}`);
+    // Ethereal is a preview inbox, so the message is not actually delivered
+    // to the subscriber. We report delivered=false so callers surface an
+    // accurate status instead of falsely claiming success.
+    return { delivered: false, provider: "ethereal", previewUrl, error: "No email provider configured (set RESEND_API_KEY). Rendered a preview via Ethereal instead." };
+  } catch (err: any) {
+    console.error("[Email/Ethereal] Threw:", err);
+    return { delivered: false, provider: "console", error: err?.message || String(err) };
+  }
+}
 
 const FALLBACK_QUOTES: Record<string, { name: string; price: number; change_24h: number; volume: number; market_cap: number; high: number; low: number }> = {
   TSLA: { name: "Tesla, Inc.", price: 185.50, change_24h: 1.45, volume: 85400000, market_cap: 580000000000, high: 188.20, low: 183.10 },
@@ -871,34 +962,15 @@ Please output your analysis as a JSON object with the following fields:
         </div>
       `;
 
-      if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
-        const transporter = nodemailer.createTransport({
-          host: process.env.SMTP_HOST,
-          port: parseInt(process.env.SMTP_PORT || "587"),
-          secure: process.env.SMTP_PORT === "465",
-          auth: {
-            user: process.env.SMTP_USER,
-            pass: process.env.SMTP_PASS
-          }
-        });
-
-        try {
-          await transporter.sendMail({
-            from: EMAIL_FROM,
-            to: email,
-            subject: `🦁 7-Day Update: ${daysVal} Days Left to Bear Market Bottom!`,
-            html: emailHtml
-          });
-          console.log(`[Clock Scheduler] Weekly snapshot email successfully sent to ${email}`);
-        } catch (err) {
-          console.error(`[Clock Scheduler Error] Failed to send email to ${email}:`, err);
-        }
+      const result = await sendEmail({
+        to: email,
+        subject: `🦁 7-Day Update: ${daysVal} Days Left to Bear Market Bottom!`,
+        html: emailHtml,
+      });
+      if (result.delivered) {
+        console.log(`[Clock Scheduler] Weekly snapshot email successfully sent to ${email} via ${result.provider}`);
       } else {
-        console.log(`\n================== SIMULATED WEEKLY UPDATE SENT ==================`);
-        console.log(`To: ${email}`);
-        console.log(`Subject: 🦁 7-Day Update: ${daysVal} Days Left to Bear Market Bottom!`);
-        console.log(`Content:\n${emailHtml}`);
-        console.log(`==========================================================\n`);
+        console.error(`[Clock Scheduler Error] Failed to send weekly email to ${email} via ${result.provider}: ${result.error || "no provider"}`);
       }
     }
   }
@@ -964,13 +1036,8 @@ Please output your analysis as a JSON object with the following fields:
 
       console.log(`[Clock Subscription] Received subscription request for email: ${email}`);
 
-      // Save email in persistent subscribers list
-      const subscribers = getSubscribers();
-      if (!subscribers.includes(email)) {
-        subscribers.push(email);
-        saveSubscribers(subscribers);
-        console.log(`[Clock Subscription] Saved new subscriber to file: ${email}`);
-      }
+      const nextUpdateDateStr = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+        .toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
 
       // Calculate target countdown clock snapshot values at the time of subscription
       const targetDate = new Date('2026-10-01T00:00:00');
@@ -1028,7 +1095,7 @@ Please output your analysis as a JSON object with the following fields:
             <div style="background-color: rgba(249, 115, 22, 0.08); border-left: 4px solid #f97316; padding: 15px; border-radius: 4px; margin-bottom: 25px;">
               <p style="color: #f97316; font-size: 13px; font-weight: bold; margin: 0 0 5px 0; font-family: monospace;">NOTIFICATION SCHEDULE</p>
               <p style="color: #cbd5e1; font-size: 13px; margin: 0; line-height: 1.5;">
-                You will receive a snapshot of the countdown clock <strong>every 7 days at 7:00 AM PST</strong> directly in your inbox.
+                You will receive a snapshot of the countdown clock <strong>every 7 days</strong> directly in your inbox. Your next update is scheduled to arrive around <strong>${nextUpdateDateStr}</strong>.
               </p>
             </div>
 
@@ -1138,63 +1205,40 @@ Thank you so much for subscribing to the Bear Market Bottom Countdown Clock aler
 Time Remaining: ${daysVal} Days, ${hoursVal} Hours, ${minutesVal} Minutes, ${secondsVal} Seconds left until October 1st, 2026.
 --------------------------------------------------
 
-You will receive a snapshot of the countdown clock every 7 days at 7:00 AM PST directly in your inbox.
+You will receive a snapshot of the countdown clock every 7 days directly in your inbox. Your next update is scheduled to arrive around ${nextUpdateDateStr}.
 
 Explore Active Swarm Tools at ${appUrl}
 
 To unsubscribe, go to ${unsubscribeUrl}`;
 
-      let previewUrl = "";
-      // Check if SMTP is configured, else fallback to console logging
-      if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
-        const transporter = nodemailer.createTransport({
-          host: process.env.SMTP_HOST,
-          port: parseInt(process.env.SMTP_PORT || "587"),
-          secure: process.env.SMTP_PORT === "465",
-          auth: {
-            user: process.env.SMTP_USER,
-            pass: process.env.SMTP_PASS
-          }
+      const sendResult = await sendEmail({
+        to: email,
+        subject: "🦁 Welcome: Weekly Bear Market Bottom Countdown Updates Enabled",
+        text: textContent,
+        html: emailHtml,
+      });
+
+      if (!sendResult.delivered) {
+        return res.status(502).json({
+          error: sendResult.error || "Failed to deliver the welcome email.",
+          previewUrl: sendResult.previewUrl,
         });
-
-        await transporter.sendMail({
-          from: EMAIL_FROM,
-          to: email,
-          subject: "🦁 Welcome: Weekly Bear Market Bottom Countdown Updates Enabled",
-          text: textContent,
-          html: emailHtml
-        });
-
-        console.log(`[Clock Subscription] Real email successfully sent to ${email}`);
-      } else {
-        const testAccount = await nodemailer.createTestAccount();
-        const transporter = nodemailer.createTransport({
-          host: "smtp.ethereal.email",
-          port: 587,
-          secure: false,
-          auth: {
-            user: testAccount.user,
-            pass: testAccount.pass
-          }
-        });
-
-        const info = await transporter.sendMail({
-          from: EMAIL_FROM,
-          to: email,
-          subject: "🦁 Welcome: Weekly Bear Market Bottom Countdown Updates Enabled",
-          text: textContent,
-          html: emailHtml
-        });
-
-        previewUrl = nodemailer.getTestMessageUrl(info) || "";
-
-        console.log(`\n================== TEST EMAIL SENT (ETHEREAL) ==================`);
-        console.log(`To: ${email}`);
-        console.log(`Preview URL: ${previewUrl}`);
-        console.log(`================================================================\n`);
       }
 
-      res.json({ success: true, message: "Welcome email sent successfully.", previewUrl });
+      // Only persist the subscription once the welcome email is actually delivered,
+      // so a failed send doesn't leave us with a subscriber who never saw a welcome.
+      const subscribers = getSubscribers();
+      if (!subscribers.includes(email)) {
+        subscribers.push(email);
+        saveSubscribers(subscribers);
+        console.log(`[Clock Subscription] Saved new subscriber to file: ${email}`);
+      }
+
+      res.json({
+        success: true,
+        message: "Welcome email sent successfully.",
+        previewUrl: sendResult.previewUrl,
+      });
 
     } catch (error: any) {
       console.error("[Clock Subscription Error]:", error);
