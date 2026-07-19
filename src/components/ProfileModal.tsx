@@ -1078,7 +1078,7 @@ export default function ProfileModal({
                   <div></div>
                 )}
                 <div className="flex gap-2">
-                  <DialogClose render={<Button variant="outline" className="border-border font-mono text-[10px] uppercase h-10" />}>
+                  <DialogClose className="inline-flex items-center justify-center rounded-lg text-sm font-medium transition-colors hover:bg-muted hover:text-foreground border border-border bg-background px-4 h-10 font-mono text-[10px] uppercase">
                     Cancel
                   </DialogClose>
                   <Button 

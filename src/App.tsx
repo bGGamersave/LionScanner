@@ -755,19 +755,17 @@ Establish position in the current accumulation range with a stop loss below **$$
               <LayoutDashboard className="mr-2 h-4 w-4" />
               Dashboard
             </Button>
-            <Button variant="ghost" className="w-full justify-start text-muted-foreground hover:text-foreground">
+            <Button variant="ghost" disabled className="w-full justify-start text-muted-foreground opacity-50 cursor-not-allowed">
               <Activity className="mr-2 h-4 w-4" />
-              Live Signals
-              <Badge variant="default" className="ml-auto bg-primary text-primary-foreground font-mono">3</Badge>
+              Live Signals Coming Soon
             </Button>
             <Button 
-              variant={activeTab === 'perps' ? 'secondary' : 'ghost'} 
-              className={`w-full justify-start ${activeTab !== 'perps' ? 'text-muted-foreground hover:text-foreground' : ''}`}
-              onClick={() => setActiveTab('perps')}
+              variant="ghost" 
+              disabled
+              className="w-full justify-start text-muted-foreground opacity-50 cursor-not-allowed"
             >
               <BarChart2 className="mr-2 h-4 w-4" />
-              Perps Platform
-              <Badge variant="outline" className="ml-auto border-emerald-500/30 text-emerald-500 text-[8px] font-mono font-bold">PHANTOM</Badge>
+              Perps Platform Coming Soon
             </Button>
             <Button 
               variant={activeTab === 'snapshots' ? 'secondary' : 'ghost'} 
@@ -995,7 +993,7 @@ Establish position in the current accumulation range with a stop loss below **$$
                           Lions 24H Swarm Strategy Room
                         </h3>
                         <Dialog>
-                          <DialogTrigger render={<span className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors hover:bg-orange-500/10 hover:text-orange-500 h-6 w-6 ml-1 cursor-pointer" />}>
+                          <DialogTrigger render={<button className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors hover:bg-orange-500/10 hover:text-orange-500 h-6 w-6 ml-1 cursor-pointer" />}>
                             <Settings className="w-3.5 h-3.5" />
                           </DialogTrigger>
                           <DialogContent className="sm:max-w-md border-border bg-card">
