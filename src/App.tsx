@@ -995,7 +995,7 @@ Establish position in the current accumulation range with a stop loss below **$$
                           Lions 24H Swarm Strategy Room
                         </h3>
                         <Dialog>
-                          <DialogTrigger className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors hover:bg-orange-500/10 hover:text-orange-500 h-6 w-6 ml-1 cursor-pointer">
+                          <DialogTrigger render={<span className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors hover:bg-orange-500/10 hover:text-orange-500 h-6 w-6 ml-1 cursor-pointer" />}>
                             <Settings className="w-3.5 h-3.5" />
                           </DialogTrigger>
                           <DialogContent className="sm:max-w-md border-border bg-card">

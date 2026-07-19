@@ -314,7 +314,7 @@ Steady accumulation in systematic intervals remains the high-confluence playbook
     <div className="space-y-6" id="cycle-monitor-wrapper">
       
       {/* Page Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-900/60 pb-5">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-border pb-5">
         <div>
           <div className="flex items-center gap-2">
             <span className="p-1 bg-orange-500/10 border border-orange-500/20 text-orange-400 rounded-lg">
@@ -327,7 +327,7 @@ Steady accumulation in systematic intervals remains the high-confluence playbook
               {wsConnected ? '● WS Live' : '○ WS Offline'}
             </Badge>
           </div>
-          <p className="text-xs text-slate-400 mt-1 max-w-2xl leading-normal font-sans">
+          <p className="text-xs text-muted-foreground mt-1 max-w-2xl leading-normal font-sans">
             Cyclical risk engine tracking normalized macro coordinates and deployment tranches. Anchored to the visual ground truth metrics of the 11 Core Pillars.
           </p>
         </div>
@@ -337,7 +337,7 @@ Steady accumulation in systematic intervals remains the high-confluence playbook
             variant="outline" 
             onClick={handleResetPillars}
             size="sm"
-            className="border-slate-800 text-xs font-mono text-slate-400 hover:text-orange-400 hover:border-orange-500/30"
+            className="border-border text-xs font-mono text-muted-foreground hover:text-orange-400 hover:border-orange-500/30"
           >
             <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
             Reset Base Metrics
@@ -373,16 +373,16 @@ Steady accumulation in systematic intervals remains the high-confluence playbook
         <div className="lg:col-span-5 space-y-6">
           
           {/* Main Composite Score Gauge */}
-          <Card className="bg-[#0c0f17] border-slate-800/80 shadow-xl shadow-black/40 relative overflow-hidden">
+          <Card className="bg-card text-card-foreground border border-border dark:border-slate-800/80 shadow-md relative overflow-hidden">
             <div className="absolute top-0 right-0 p-8 opacity-5 pointer-events-none">
               <Sparkles className="w-48 h-48 text-orange-400" />
             </div>
             
-            <CardHeader className="pb-3 border-b border-slate-900/60">
+            <CardHeader className="pb-3 border-b border-border">
               <CardTitle className="text-[10px] font-mono uppercase tracking-widest text-orange-400 font-bold flex items-center gap-1.5">
                 <Gauge className="w-3.5 h-3.5" /> COMPOSITE RISK METRICS
               </CardTitle>
-              <CardDescription className="text-[10px] text-slate-400 font-sans mt-0.5">
+              <CardDescription className="text-[10px] text-muted-foreground font-sans mt-0.5">
                 Calculated mean risk value from all 11 core macro parameters.
               </CardDescription>
             </CardHeader>
@@ -390,49 +390,49 @@ Steady accumulation in systematic intervals remains the high-confluence playbook
             <CardContent className="pt-6 text-center space-y-6">
               
               {/* Dynamic Big Score Display */}
-              <div className="relative inline-flex items-center justify-center p-6 bg-black/40 border border-slate-800 rounded-2xl w-full max-w-[280px] mx-auto overflow-hidden">
-                <div className="absolute top-2 left-2 text-[8px] font-mono text-slate-500 uppercase">Mean Cycle Index</div>
+              <div className="relative inline-flex items-center justify-center p-6 bg-muted/40 dark:bg-black/40 border border-border dark:border-slate-800 rounded-2xl w-full max-w-[280px] mx-auto overflow-hidden">
+                <div className="absolute top-2 left-2 text-[8px] font-mono text-muted-foreground uppercase">Mean Cycle Index</div>
                 <div className="space-y-1 z-10">
                   <span className="text-6xl font-black font-mono tracking-tighter text-transparent bg-clip-text bg-gradient-to-br from-orange-400 to-amber-500">
                     {compositeCycleScore}
                   </span>
-                  <span className="text-xs text-slate-500 font-mono block">/ 100 max</span>
+                  <span className="text-xs text-muted-foreground font-mono block">/ 100 max</span>
                 </div>
               </div>
 
               {/* Active Zone Readout */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between text-xs font-mono">
-                  <span className="text-slate-400">Calculated Zone:</span>
+                  <span className="text-muted-foreground">Calculated Zone:</span>
                   <span className={`px-2.5 py-1 rounded text-[11px] font-black tracking-wider uppercase border ${zoneColor}`}>
                     {activeZone}
                   </span>
                 </div>
-                <p className="text-xs text-slate-300 leading-normal font-sans pt-1 max-w-sm mx-auto">
+                <p className="text-xs text-foreground/80 dark:text-slate-300 leading-normal font-sans pt-1 max-w-sm mx-auto">
                   {zoneDescription}
                 </p>
               </div>
 
               {/* Progress Slider Track for Visual Representation */}
               <div className="space-y-1.5 pt-2">
-                <div className="flex justify-between font-mono text-[9px] text-slate-500 px-1">
+                <div className="flex justify-between font-mono text-[9px] text-muted-foreground px-1">
                   <span>0 (BOTTOM)</span>
                   <span>50 (MID)</span>
                   <span>100 (TOP)</span>
                 </div>
-                <Progress value={compositeCycleScore} className="h-2 bg-[#07090e] [&>div]:bg-gradient-to-r [&>div]:from-emerald-500 [&>div]:via-orange-500 [&>div]:to-red-500" />
+                <Progress value={compositeCycleScore} className="h-2 bg-muted dark:bg-[#07090e] [&>div]:bg-gradient-to-r [&>div]:from-emerald-500 [&>div]:via-orange-500 [&>div]:to-red-500" />
               </div>
 
             </CardContent>
           </Card>
 
           {/* Capital Allocation & Tranches */}
-          <Card className="bg-[#0c0f17] border-slate-800/80 shadow-xl shadow-black/40">
-            <CardHeader className="pb-3 border-b border-slate-900/60">
+          <Card className="bg-card text-card-foreground border border-border dark:border-slate-800/80 shadow-md">
+            <CardHeader className="pb-3 border-b border-border">
               <CardTitle className="text-[10px] font-mono uppercase tracking-widest text-orange-400 font-bold flex items-center gap-1.5">
                 <TrendingDown className="w-3.5 h-3.5" /> DEPLOYMENT TRANCHES PROTOCOL
               </CardTitle>
-              <CardDescription className="text-[10px] text-slate-400 font-sans mt-0.5">
+              <CardDescription className="text-[10px] text-muted-foreground font-sans mt-0.5">
                 Systematic asset accumulation triggers mapped to absolute ATH Coordinates ($126,296).
               </CardDescription>
             </CardHeader>
@@ -440,8 +440,8 @@ Steady accumulation in systematic intervals remains the high-confluence playbook
             <CardContent className="pt-4 space-y-4 font-mono text-xs">
               
               {/* Interactive Bitcoin Spot Price Modeller */}
-              <div className="bg-black/30 border border-slate-900/60 p-3 rounded-lg space-y-2">
-                <div className="flex justify-between items-center text-[10px] uppercase tracking-wider text-slate-400">
+              <div className="bg-muted/40 dark:bg-black/30 border border-border dark:border-slate-900/60 p-3 rounded-lg space-y-2">
+                <div className="flex justify-between items-center text-[10px] uppercase tracking-wider text-muted-foreground">
                   <span>Spot Price Accumulator Model</span>
                   <span className="text-orange-400 font-bold">${currentBtcPrice.toLocaleString()}</span>
                 </div>
@@ -452,18 +452,18 @@ Steady accumulation in systematic intervals remains the high-confluence playbook
                   step={500}
                   value={currentBtcPrice}
                   onChange={(e) => handleBtcPriceChange(Number(e.target.value))}
-                  className="w-full accent-orange-500 h-1 bg-[#07090e] rounded cursor-pointer"
+                  className="w-full accent-orange-500 h-1 bg-muted dark:bg-[#07090e] rounded cursor-pointer"
                 />
-                <div className="flex justify-between text-[9px] text-slate-500">
+                <div className="flex justify-between text-[9px] text-muted-foreground/80">
                   <span>$25k</span>
                   <span>ATH ($126k)</span>
                 </div>
               </div>
 
               {/* Drawdown Output Display */}
-              <div className="flex justify-between items-center bg-[#07090e] border border-slate-800 p-2.5 rounded-lg">
-                <span className="text-[10px] text-slate-400 uppercase font-semibold">Peak Drawdown Percent:</span>
-                <span className={`font-bold ${drawdownVal <= -50 ? 'text-emerald-400' : 'text-slate-200'}`}>
+              <div className="flex justify-between items-center bg-muted/60 dark:bg-[#07090e] border border-border dark:border-slate-800 p-2.5 rounded-lg">
+                <span className="text-[10px] text-muted-foreground uppercase font-semibold">Peak Drawdown Percent:</span>
+                <span className={`font-bold ${drawdownVal <= -50 ? 'text-emerald-400' : 'text-foreground dark:text-slate-200'}`}>
                   {drawdownVal.toFixed(1)}%
                 </span>
               </div>
@@ -475,14 +475,14 @@ Steady accumulation in systematic intervals remains the high-confluence playbook
                 <div className={`p-3 border rounded-xl flex items-center justify-between ${
                   isT1Triggered 
                     ? 'bg-emerald-500/5 border-emerald-500/20 text-emerald-400' 
-                    : 'bg-[#07090e]/50 border-slate-900 text-slate-400'
+                    : 'bg-muted/30 dark:bg-[#07090e]/50 border-border dark:border-slate-900 text-muted-foreground'
                 }`}>
                   <div className="space-y-0.5">
                     <p className="font-bold text-[11px] uppercase">TRANCHE 1 (T1) - 50% BATCH</p>
-                    <p className="text-[9px] text-slate-500 font-sans">Triggers at -50% Drawdown from ATH ($63,148)</p>
+                    <p className="text-[9px] text-muted-foreground/80 font-sans">Triggers at -50% Drawdown from ATH ($63,148)</p>
                   </div>
                   <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded ${
-                    isT1Triggered ? 'bg-emerald-500/10 border border-emerald-500/20' : 'bg-slate-900 border border-slate-800'
+                    isT1Triggered ? 'bg-emerald-500/10 border border-emerald-500/20' : 'bg-muted dark:bg-slate-900 border border-border dark:border-slate-800'
                   }`}>
                     {isT1Triggered ? "TRIGGERED" : "AWAITING"}
                   </span>
@@ -492,14 +492,14 @@ Steady accumulation in systematic intervals remains the high-confluence playbook
                 <div className={`p-3 border rounded-xl flex items-center justify-between ${
                   isT2Triggered 
                     ? 'bg-emerald-500/5 border-emerald-500/20 text-emerald-400' 
-                    : 'bg-[#07090e]/50 border-slate-900 text-slate-400'
+                    : 'bg-muted/30 dark:bg-[#07090e]/50 border-border dark:border-slate-900 text-muted-foreground'
                 }`}>
                   <div className="space-y-0.5">
                     <p className="font-bold text-[11px] uppercase">TRANCHE 2 (T2) - 75% BATCH</p>
-                    <p className="text-[9px] text-slate-500 font-sans">Triggers at -65% Drawdown from ATH ($44,204)</p>
+                    <p className="text-[9px] text-muted-foreground/80 font-sans">Triggers at -65% Drawdown from ATH ($44,204)</p>
                   </div>
                   <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded ${
-                    isT2Triggered ? 'bg-emerald-500/10 border border-emerald-500/20' : 'bg-slate-900 border border-slate-800'
+                    isT2Triggered ? 'bg-emerald-500/10 border border-emerald-500/20' : 'bg-muted dark:bg-slate-900 border border-border dark:border-slate-800'
                   }`}>
                     {isT2Triggered ? "TRIGGERED" : "AWAITING"}
                   </span>
@@ -509,14 +509,14 @@ Steady accumulation in systematic intervals remains the high-confluence playbook
                 <div className={`p-3 border rounded-xl flex items-center justify-between ${
                   isT3Triggered 
                     ? 'bg-emerald-500/5 border-emerald-500/20 text-emerald-400' 
-                    : 'bg-[#07090e]/50 border-slate-900 text-slate-400'
+                    : 'bg-muted/30 dark:bg-[#07090e]/50 border-border dark:border-slate-900 text-muted-foreground'
                 }`}>
                   <div className="space-y-0.5">
                     <p className="font-bold text-[11px] uppercase">TRANCHE 3 (T3) - 100% CAPITAL</p>
-                    <p className="text-[9px] text-slate-500 font-sans">Triggers at -70% Drawdown from ATH ($37,889)</p>
+                    <p className="text-[9px] text-muted-foreground/80 font-sans">Triggers at -70% Drawdown from ATH ($37,889)</p>
                   </div>
                   <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded ${
-                    isT3Triggered ? 'bg-emerald-500/10 border border-emerald-500/20' : 'bg-slate-900 border border-slate-800'
+                    isT3Triggered ? 'bg-emerald-500/10 border border-emerald-500/20' : 'bg-muted dark:bg-slate-900 border border-border dark:border-slate-800'
                   }`}>
                     {isT3Triggered ? "TRIGGERED" : "AWAITING"}
                   </span>
@@ -526,14 +526,14 @@ Steady accumulation in systematic intervals remains the high-confluence playbook
                 <div className={`p-3 border rounded-xl flex items-center justify-between ${
                   isInvalidationTriggered 
                     ? 'bg-rose-500/5 border-rose-500/20 text-rose-400' 
-                    : 'bg-[#07090e]/50 border-slate-900 text-slate-400'
+                    : 'bg-muted/30 dark:bg-[#07090e]/50 border-border dark:border-slate-900 text-muted-foreground'
                 }`}>
                   <div className="space-y-0.5">
                     <p className="font-bold text-[11px] uppercase">INVALIDATION SIGNAL (BUY REMAINING)</p>
-                    <p className="text-[9px] text-slate-500 font-sans">Weekly close above 20W SMA ($101,037)</p>
+                    <p className="text-[9px] text-muted-foreground/80 font-sans">Weekly close above 20W SMA ($101,037)</p>
                   </div>
                   <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded ${
-                    isInvalidationTriggered ? 'bg-rose-500/15 border border-rose-500/30 text-rose-400' : 'bg-slate-900 border border-slate-800'
+                    isInvalidationTriggered ? 'bg-rose-500/15 border border-rose-500/30 text-rose-400' : 'bg-muted dark:bg-slate-900 border border-border dark:border-slate-800'
                   }`}>
                     {isInvalidationTriggered ? "INVALIDATED" : "STABLE"}
                   </span>
@@ -545,8 +545,8 @@ Steady accumulation in systematic intervals remains the high-confluence playbook
           </Card>
 
           {/* Altcoin Rotation Filter */}
-          <Card className="bg-[#0c0f17] border-slate-800/80 shadow-xl shadow-black/40">
-            <CardHeader className="pb-3 border-b border-slate-900/60">
+          <Card className="bg-card text-card-foreground border border-border dark:border-slate-800/80 shadow-md">
+            <CardHeader className="pb-3 border-b border-border">
               <CardTitle className="text-[10px] font-mono uppercase tracking-widest text-orange-400 font-bold flex items-center gap-1.5">
                 <Activity className="w-3.5 h-3.5" /> ALTCOIN ROTATION FILTER
               </CardTitle>
@@ -554,8 +554,8 @@ Steady accumulation in systematic intervals remains the high-confluence playbook
             <CardContent className="pt-4 space-y-4 font-mono text-xs">
               
               {/* Slider for ETH/BTC ratio */}
-              <div className="bg-black/30 border border-slate-900/60 p-3 rounded-lg space-y-2">
-                <div className="flex justify-between items-center text-[10px] uppercase tracking-wider text-slate-400">
+              <div className="bg-muted/40 dark:bg-black/30 border border-border dark:border-slate-900/60 p-3 rounded-lg space-y-2">
+                <div className="flex justify-between items-center text-[10px] uppercase tracking-wider text-muted-foreground">
                   <span>ETH/BTC Liquidity Anchor</span>
                   <span className="text-orange-400 font-bold">{ethBtcRatio.toFixed(3)}</span>
                 </div>
@@ -566,9 +566,9 @@ Steady accumulation in systematic intervals remains the high-confluence playbook
                   step={0.001}
                   value={ethBtcRatio}
                   onChange={(e) => setEthBtcRatio(Number(e.target.value))}
-                  className="w-full accent-orange-500 h-1 bg-[#07090e] rounded cursor-pointer"
+                  className="w-full accent-orange-500 h-1 bg-muted dark:bg-[#07090e] rounded cursor-pointer"
                 />
-                <div className="flex justify-between text-[9px] text-slate-500">
+                <div className="flex justify-between text-[9px] text-muted-foreground/80">
                   <span>0.015 (Extreme Low)</span>
                   <span>Trigger Rule (0.035)</span>
                   <span>0.075 (Alt Season)</span>
@@ -578,15 +578,15 @@ Steady accumulation in systematic intervals remains the high-confluence playbook
               {/* Filter Readout status */}
               <div className={`p-4 rounded-xl border flex items-center gap-3 ${
                 isAltRotationProhibited 
-                  ? 'bg-rose-950/20 border-rose-900/50 text-rose-300' 
-                  : 'bg-emerald-950/20 border-emerald-900/50 text-emerald-300'
+                  ? 'bg-rose-500/10 border-rose-500/20 text-rose-600 dark:text-rose-300' 
+                  : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-600 dark:text-emerald-300'
               }`}>
                 <div className="space-y-1">
-                  <span className="text-[9px] font-bold tracking-widest uppercase block text-slate-400">Active Rotational Directives</span>
+                  <span className="text-[9px] font-bold tracking-widest uppercase block text-muted-foreground">Active Rotational Directives</span>
                   <p className="text-xs font-bold uppercase">
                     {isAltRotationProhibited ? "STRICT NO ALT ROTATION PROTOCOL" : "ALT ROTATION PERMITTED"}
                   </p>
-                  <p className="text-[10px] text-slate-400 leading-normal font-sans pt-0.5">
+                  <p className="text-[10px] text-muted-foreground leading-normal font-sans pt-0.5">
                     {isAltRotationProhibited 
                       ? "ETH/BTC is below the 0.035 threshold. Capital must be locked entirely in BTC. Purchasing alts yields negative expected utility."
                       : "ETH/BTC has established strength above 0.035. Selective macro alts accumulation models are validated."
@@ -604,13 +604,13 @@ Steady accumulation in systematic intervals remains the high-confluence playbook
         <div className="lg:col-span-7 space-y-6">
           
           {/* 11 Pillars Interactive Card */}
-          <Card className="bg-[#0c0f17] border-slate-800/80 shadow-xl shadow-black/40">
-            <CardHeader className="pb-3 border-b border-slate-900/60 flex flex-row items-center justify-between">
+          <Card className="bg-card text-card-foreground border border-border dark:border-slate-800/80 shadow-md">
+            <CardHeader className="pb-3 border-b border-border flex flex-row items-center justify-between">
               <div>
                 <CardTitle className="text-[10px] font-mono uppercase tracking-widest text-orange-400 font-bold flex items-center gap-1.5">
                   <Layers className="w-3.5 h-3.5" /> Technical Indicator Matrix (11 Pillars)
                 </CardTitle>
-                <CardDescription className="text-[10px] text-slate-400 font-sans mt-0.5">
+                <CardDescription className="text-[10px] text-muted-foreground font-sans mt-0.5">
                   Adjust individual indicator risk weights to simulate overall market cycle score deviations.
                 </CardDescription>
               </div>
@@ -626,16 +626,16 @@ Steady accumulation in systematic intervals remains the high-confluence playbook
                   {pillars.map((pillar) => (
                     <div 
                       key={pillar.id}
-                      className="bg-black/20 hover:bg-black/40 border border-slate-900 rounded-xl p-3.5 space-y-3 transition-colors"
+                      className="bg-muted/20 dark:bg-black/20 hover:bg-muted/30 dark:hover:bg-black/40 border border-border dark:border-slate-900 rounded-xl p-3.5 space-y-3 transition-colors"
                     >
                       {/* Name & Baseline Indicator */}
                       <div className="flex justify-between items-start gap-2">
                         <div className="space-y-0.5">
-                          <h4 className="text-xs font-black font-mono text-slate-200 uppercase">{pillar.name}</h4>
-                          <p className="text-[9.5px] text-slate-500 leading-normal font-sans max-w-md">{pillar.desc}</p>
+                          <h4 className="text-xs font-black font-mono text-foreground dark:text-slate-200 uppercase">{pillar.name}</h4>
+                          <p className="text-[9.5px] text-muted-foreground leading-normal font-sans max-w-md">{pillar.desc}</p>
                         </div>
                         <div className="text-right font-mono shrink-0">
-                          <span className="text-[8.5px] text-slate-500 block uppercase font-semibold">BASELINE</span>
+                          <span className="text-[8.5px] text-muted-foreground block uppercase font-semibold">BASELINE</span>
                           <span className="text-orange-400 text-[10.5px] font-bold">Value: {pillar.baselineVal}</span>
                         </div>
                       </div>
@@ -651,22 +651,22 @@ Steady accumulation in systematic intervals remains the high-confluence playbook
                             max={100}
                             value={pillar.currentScore}
                             onChange={(e) => handlePillarScoreChange(pillar.id, Number(e.target.value))}
-                            className="w-full accent-orange-500 h-1 bg-[#07090e] rounded cursor-pointer"
+                            className="w-full accent-orange-500 h-1 bg-muted dark:bg-[#07090e] rounded cursor-pointer"
                           />
                         </div>
 
                         {/* Current Score / 100 block */}
                         <div className="col-span-4 flex items-center justify-end gap-1.5 font-mono text-[11px]">
-                          <span className="text-slate-500 text-[9px] uppercase">SCORE:</span>
+                          <span className="text-muted-foreground text-[9px] uppercase">SCORE:</span>
                           <input 
                             type="number"
                             min={0}
                             max={100}
                             value={pillar.currentScore}
                             onChange={(e) => handlePillarScoreChange(pillar.id, Number(e.target.value))}
-                            className="bg-black/60 border border-slate-800 text-center w-12 py-0.5 text-orange-400 rounded focus:border-orange-500/50 outline-none text-[11px] font-bold font-mono"
+                            className="bg-background dark:bg-black/60 border border-border dark:border-slate-800 text-center w-12 py-0.5 text-orange-400 rounded focus:border-orange-500/50 outline-none text-[11px] font-bold font-mono"
                           />
-                          <span className="text-slate-500 font-bold">/100</span>
+                          <span className="text-muted-foreground font-bold">/100</span>
                         </div>
 
                       </div>
@@ -680,8 +680,8 @@ Steady accumulation in systematic intervals remains the high-confluence playbook
           </Card>
 
           {/* Macro Time-Analog Floor Window Projection */}
-          <Card className="bg-[#0c0f17] border-slate-800/80 shadow-xl shadow-black/40">
-            <CardHeader className="pb-3 border-b border-slate-900/60">
+          <Card className="bg-card text-card-foreground border border-border dark:border-slate-800/80 shadow-md">
+            <CardHeader className="pb-3 border-b border-border">
               <CardTitle className="text-[10px] font-mono uppercase tracking-widest text-orange-400 font-bold flex items-center gap-1.5">
                 <Calendar className="w-3.5 h-3.5" /> CYCLICAL WINDOW FLOOR ANALOGS
               </CardTitle>
@@ -690,14 +690,14 @@ Steady accumulation in systematic intervals remains the high-confluence playbook
               
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
                 
-                <div className="p-3 bg-black/40 border border-slate-900 rounded-lg text-center">
-                  <span className="text-[8px] text-slate-500 block uppercase">2018 Bottom Analog</span>
-                  <p className="font-bold text-slate-200 pt-0.5">ATH + 363 Days</p>
+                <div className="p-3 bg-muted/40 dark:bg-black/40 border border-border dark:border-slate-900 rounded-lg text-center">
+                  <span className="text-[8px] text-muted-foreground block uppercase">2018 Bottom Analog</span>
+                  <p className="font-bold text-foreground dark:text-slate-200 pt-0.5">ATH + 363 Days</p>
                 </div>
 
-                <div className="p-3 bg-black/40 border border-slate-900 rounded-lg text-center">
-                  <span className="text-[8px] text-slate-500 block uppercase">2022 Bottom Analog</span>
-                  <p className="font-bold text-slate-200 pt-0.5">ATH + 376 Days</p>
+                <div className="p-3 bg-muted/40 dark:bg-black/40 border border-border dark:border-slate-900 rounded-lg text-center">
+                  <span className="text-[8px] text-muted-foreground block uppercase">2022 Bottom Analog</span>
+                  <p className="font-bold text-foreground dark:text-slate-200 pt-0.5">ATH + 376 Days</p>
                 </div>
 
                 <div className="p-3 bg-orange-500/10 border border-orange-500/20 rounded-lg text-center">
@@ -708,10 +708,10 @@ Steady accumulation in systematic intervals remains the high-confluence playbook
               </div>
 
               {/* Dynamic Day counter */}
-              <div className="bg-[#07090e] border border-slate-800 rounded-xl p-4 flex flex-col md:flex-row items-center justify-between gap-4">
+              <div className="bg-muted/60 dark:bg-[#07090e] border border-border dark:border-slate-800 rounded-xl p-4 flex flex-col md:flex-row items-center justify-between gap-4">
                 <div className="space-y-0.5">
-                  <span className="text-[8px] font-bold text-slate-500 uppercase tracking-wider">Dynamic Analog Coordinate</span>
-                  <p className="text-[11px] text-slate-200 font-sans leading-normal">
+                  <span className="text-[8px] font-bold text-muted-foreground uppercase tracking-wider">Dynamic Analog Coordinate</span>
+                  <p className="text-[11px] text-foreground/80 dark:text-slate-200 font-sans leading-normal">
                     Macro ATH was established on **Oct 6, 2025**. Based on current date alignment, we have elapsed:
                   </p>
                 </div>
@@ -724,12 +724,12 @@ Steady accumulation in systematic intervals remains the high-confluence playbook
           </Card>
 
           {/* AI Advisor Chamber */}
-          <Card className="bg-[#0c0f17] border-slate-800/80 shadow-xl shadow-black/40">
-            <CardHeader className="pb-3 border-b border-slate-900/60">
+          <Card className="bg-card text-card-foreground border border-border dark:border-slate-800/80 shadow-md">
+            <CardHeader className="pb-3 border-b border-border">
               <CardTitle className="text-[10px] font-mono uppercase tracking-widest text-orange-400 font-bold flex items-center gap-1.5">
                 <Cpu className="w-3.5 h-3.5" /> Swarm risk engine advisory chamber
               </CardTitle>
-              <CardDescription className="text-[10px] text-slate-400 font-sans mt-0.5">
+              <CardDescription className="text-[10px] text-muted-foreground font-sans mt-0.5">
                 Leverage generative Swarm models to evaluate your custom simulated indicators.
               </CardDescription>
             </CardHeader>
@@ -754,10 +754,10 @@ Steady accumulation in systematic intervals remains the high-confluence playbook
               </Button>
 
               {aiReport && (
-                <div className="bg-[#03050a] border border-slate-800/80 rounded-xl p-4 font-mono text-[11px] leading-relaxed text-slate-300 relative overflow-hidden animate-fadeIn">
+                <div className="bg-muted/50 dark:bg-[#03050a] border border-border dark:border-slate-800/80 rounded-xl p-4 font-mono text-[11px] leading-relaxed text-foreground/90 dark:text-slate-300 relative overflow-hidden animate-fadeIn">
                   <div className="absolute top-2 right-2 flex gap-1 items-center">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                    <span className="text-[8px] text-slate-500 uppercase tracking-widest">REPORT INFERENCE SECURED</span>
+                    <span className="text-[8px] text-muted-foreground uppercase tracking-widest">REPORT INFERENCE SECURED</span>
                   </div>
                   
                   <div className="space-y-4 whitespace-pre-wrap select-text pr-2 pt-1 max-h-[360px] overflow-y-auto">

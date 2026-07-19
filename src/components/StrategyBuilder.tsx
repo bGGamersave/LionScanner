@@ -435,9 +435,9 @@ export default function StrategyBuilder({
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-[#07090e] text-slate-100 overflow-hidden font-sans">
+    <div className="flex-1 flex flex-col h-full bg-background dark:bg-[#07090e] text-foreground dark:text-slate-100 overflow-hidden font-sans">
       {/* Upper Navigation & Stats Bar */}
-      <div className="border-b border-orange-500/10 bg-[#0c0f17] px-6 py-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+      <div className="border-b border-border dark:border-orange-500/10 bg-card dark:bg-[#0c0f17] text-card-foreground px-6 py-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <div className="flex items-center gap-2">
             <span className="p-1.5 bg-orange-500/10 rounded-md border border-orange-500/20 text-orange-400">
@@ -447,18 +447,18 @@ export default function StrategyBuilder({
               Strategy Builder
             </h1>
           </div>
-          <p className="text-xs text-slate-400 mt-1 max-w-2xl leading-normal">
+          <p className="text-xs text-muted-foreground mt-1 max-w-2xl leading-normal">
             Automated trading engine built on a confluence of Fibonacci Retracements and momentum indicators. Integrates with live price feeds, secure HyperLiquid ledger keys, and the server-side Gemini AI Architect.
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
           {symbolConfigs[strategySymbol] && (
-            <div className="bg-[#07090e] border border-slate-800 rounded px-3 py-1 flex items-center gap-2 font-mono text-[11px]">
-              <span className="text-slate-500">ACTIVE:</span>
+            <div className="bg-muted dark:bg-[#07090e] border border-border dark:border-slate-800 rounded px-3 py-1 flex items-center gap-2 font-mono text-[11px]">
+              <span className="text-muted-foreground/80">ACTIVE:</span>
               <span className="text-orange-400 font-bold">{strategySymbol.split(":")[1] || strategySymbol}</span>
               <span className="text-slate-600">|</span>
-              <span className="text-slate-400">Range: ${strategyCycleLow.toLocaleString()} - ${strategyCycleHigh.toLocaleString()}</span>
+              <span className="text-muted-foreground">Range: ${strategyCycleLow.toLocaleString()} - ${strategyCycleHigh.toLocaleString()}</span>
             </div>
           )}
         </div>
@@ -495,12 +495,12 @@ export default function StrategyBuilder({
             <div className="lg:col-span-4 space-y-6">
               
               {/* Asset & Cycle Settings Card */}
-              <Card className="bg-[#0c0f17] border-slate-800/80 shadow-xl shadow-black/40">
-                <CardHeader className="pb-3 border-b border-slate-900/60">
+              <Card className="bg-card text-card-foreground border border-border dark:border-slate-800/80 shadow-md">
+                <CardHeader className="pb-3 border-b border-border">
                   <CardTitle className="text-[10px] font-mono uppercase tracking-widest text-orange-400 font-bold flex items-center gap-1.5">
                     <Sliders className="w-3.5 h-3.5" /> Parameter Modeling
                   </CardTitle>
-                  <CardDescription className="text-[10px] text-slate-400 mt-1 font-sans">
+                  <CardDescription className="text-[10px] text-muted-foreground mt-1 font-sans">
                     Configure the macro cycle high, low, and simulated price to test confluence parameters.
                   </CardDescription>
                 </CardHeader>
@@ -508,9 +508,9 @@ export default function StrategyBuilder({
                   
                   {/* Select Ticker */}
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block">Target Instrument</label>
+                    <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider block">Target Instrument</label>
                     <select 
-                      className="w-full bg-[#07090e] border border-slate-800 rounded-lg p-2.5 text-xs text-slate-200 font-mono focus:ring-1 focus:ring-orange-500 outline-none"
+                      className="w-full bg-background dark:bg-[#07090e] border border-border dark:border-slate-800 rounded-lg p-2.5 text-xs text-foreground dark:text-slate-200 font-mono focus:ring-1 focus:ring-orange-500 outline-none"
                       value={strategySymbol}
                       onChange={(e) => handleSymbolChange(e.target.value)}
                     >
@@ -525,28 +525,28 @@ export default function StrategyBuilder({
                   {/* Range Boundaries */}
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1.5">
-                      <label className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block">Cycle Low</label>
+                      <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider block">Cycle Low</label>
                       <input 
                         type="number" 
                         value={strategyCycleLow}
                         onChange={(e) => setStrategyCycleLow(Number(e.target.value))}
-                        className="w-full bg-[#07090e] border border-slate-800 rounded-lg p-2.5 text-xs text-slate-200 font-mono focus:ring-1 focus:ring-orange-500 outline-none"
+                        className="w-full bg-background dark:bg-[#07090e] border border-border dark:border-slate-800 rounded-lg p-2.5 text-xs text-foreground dark:text-slate-200 font-mono focus:ring-1 focus:ring-orange-500 outline-none"
                       />
                     </div>
                     <div className="space-y-1.5">
-                      <label className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block">Cycle High</label>
+                      <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider block">Cycle High</label>
                       <input 
                         type="number" 
                         value={strategyCycleHigh}
                         onChange={(e) => setStrategyCycleHigh(Number(e.target.value))}
-                        className="w-full bg-[#07090e] border border-slate-800 rounded-lg p-2.5 text-xs text-slate-200 font-mono focus:ring-1 focus:ring-orange-500 outline-none"
+                        className="w-full bg-background dark:bg-[#07090e] border border-border dark:border-slate-800 rounded-lg p-2.5 text-xs text-foreground dark:text-slate-200 font-mono focus:ring-1 focus:ring-orange-500 outline-none"
                       />
                     </div>
                   </div>
 
                   {/* Simulated price controller */}
-                  <div className="space-y-2 border-t border-slate-900/60 pt-3">
-                    <div className="flex justify-between items-center text-[10px] font-mono text-slate-400 uppercase tracking-wider">
+                  <div className="space-y-2 border-t border-border pt-3">
+                    <div className="flex justify-between items-center text-[10px] font-mono text-muted-foreground uppercase tracking-wider">
                       <span>Simulated Price</span>
                       <span className="font-bold text-orange-400">${strategySimPrice.toLocaleString()}</span>
                     </div>
@@ -562,7 +562,7 @@ export default function StrategyBuilder({
                         setStrategySimPrice(val);
                         setPriceInputText(val.toString());
                       }}
-                      className="w-full accent-orange-500 h-1 bg-[#07090e] rounded-lg cursor-pointer"
+                      className="w-full accent-orange-500 h-1 bg-muted dark:bg-[#07090e] rounded-lg cursor-pointer"
                     />
 
                     <div className="flex gap-2">
@@ -578,7 +578,7 @@ export default function StrategyBuilder({
                             setPriceInputText(strategySimPrice.toString());
                           }
                         }}
-                        className="flex-1 bg-[#07090e] border border-slate-800 rounded-lg p-2 text-xs text-slate-200 font-mono outline-none focus:border-orange-500"
+                        className="flex-1 bg-background dark:bg-[#07090e] border border-border dark:border-slate-800 rounded-lg p-2 text-xs text-foreground dark:text-slate-200 font-mono outline-none focus:border-orange-500"
                         placeholder="Price"
                       />
                       
@@ -606,16 +606,16 @@ export default function StrategyBuilder({
                   </div>
 
                   {/* Momentum indicators configuration (VMC Green Dot) */}
-                  <div className="space-y-2 border-t border-slate-900/60 pt-3">
+                  <div className="space-y-2 border-t border-border pt-3">
                     <div className="flex justify-between items-center">
-                      <label className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block">
+                      <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider block">
                         VMC Cipher B - Green Dot Trigger
                       </label>
                       <Badge className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-mono text-[9px] uppercase font-bold">
                         {strategyGreenDotTimeframes.length} active
                       </Badge>
                     </div>
-                    <p className="text-[9px] text-slate-500 font-sans leading-normal">
+                    <p className="text-[9px] text-muted-foreground/80 font-sans leading-normal">
                       Toggle active high-timeframe green dots to verify momentum confluence.
                     </p>
 
@@ -626,7 +626,7 @@ export default function StrategyBuilder({
                           <button
                             key={tf}
                             onClick={() => toggleTimeframeGreenDot(tf)}
-                            className={`p-2 rounded-lg border text-center font-mono text-[11px] font-bold transition-all ${isChecked ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-400 shadow-inner' : 'bg-[#07090e]/80 border-slate-800 text-slate-400 hover:text-slate-200'}`}
+                            className={`p-2 rounded-lg border text-center font-mono text-[11px] font-bold transition-all ${isChecked ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-400 shadow-inner' : 'bg-muted dark:bg-[#07090e]/80 border-border dark:border-slate-800 text-muted-foreground hover:text-foreground'}`}
                           >
                             {tf}
                           </button>
@@ -636,8 +636,8 @@ export default function StrategyBuilder({
                   </div>
 
                   {/* Leverage Selector */}
-                  <div className="space-y-2 border-t border-slate-900/60 pt-3">
-                    <div className="flex justify-between items-center text-[10px] font-mono text-slate-400 uppercase tracking-wider">
+                  <div className="space-y-2 border-t border-border pt-3">
+                    <div className="flex justify-between items-center text-[10px] font-mono text-muted-foreground uppercase tracking-wider">
                       <span>Leverage Configuration</span>
                       <span className="font-bold text-orange-400">{strategyLeverage}x</span>
                     </div>
@@ -648,7 +648,7 @@ export default function StrategyBuilder({
                       step={1}
                       value={strategyLeverage}
                       onChange={(e) => setStrategyLeverage(Number(e.target.value))}
-                      className="w-full accent-orange-500 h-1 bg-[#07090e] rounded-lg cursor-pointer"
+                      className="w-full accent-orange-500 h-1 bg-muted dark:bg-[#07090e] rounded-lg cursor-pointer"
                     />
                   </div>
 
@@ -656,25 +656,25 @@ export default function StrategyBuilder({
               </Card>
 
               {/* Status and Action execution */}
-              <Card className="bg-[#0c0f17] border-slate-800/80 shadow-xl shadow-black/40">
-                <CardHeader className="pb-3 border-b border-slate-900/60">
+              <Card className="bg-card text-card-foreground border border-border dark:border-slate-800/80 shadow-md">
+                <CardHeader className="pb-3 border-b border-border">
                   <CardTitle className="text-[10px] font-mono uppercase tracking-widest text-orange-400 font-bold flex items-center gap-1.5">
                     <Zap className="w-3.5 h-3.5" /> Strategy Engine Decision
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="pt-4 space-y-4">
-                  <div className="bg-[#07090e] border border-slate-800 rounded-xl p-4 flex flex-col items-center justify-center text-center space-y-2 relative overflow-hidden">
+                  <div className="bg-muted dark:bg-[#07090e] border border-border dark:border-slate-800 rounded-xl p-4 flex flex-col items-center justify-center text-center space-y-2 relative overflow-hidden">
                     {/* Background glow when long triggers */}
                     {isConfluenceSuccessful && (
                       <div className="absolute inset-0 bg-emerald-500/5 animate-pulse" />
                     )}
                     
-                    <span className="text-[9px] font-mono text-slate-500 uppercase tracking-widest">CURRENT DECISION</span>
+                    <span className="text-[9px] font-mono text-muted-foreground uppercase tracking-widest">CURRENT DECISION</span>
                     <h2 className={`text-xl font-black font-mono tracking-wider uppercase ${isConfluenceSuccessful ? 'text-emerald-400 animate-pulse' : 'text-amber-500'}`}>
                       {computedStrategyStatus}
                     </h2>
                     
-                    <div className="text-[11px] text-slate-400 max-w-sm font-sans leading-relaxed pt-1">
+                    <div className="text-[11px] text-muted-foreground max-w-sm font-sans leading-relaxed pt-1">
                       {statusReason}
                     </div>
                   </div>
@@ -696,8 +696,8 @@ export default function StrategyBuilder({
             <div className="lg:col-span-4 space-y-6">
               
               {/* Fib Gauge Card */}
-              <Card className="bg-[#0c0f17] border-slate-800/80 shadow-xl shadow-black/40 h-full flex flex-col">
-                <CardHeader className="pb-3 border-b border-slate-900/60">
+              <Card className="bg-card text-card-foreground border border-border dark:border-slate-800/80 shadow-md h-full flex flex-col">
+                <CardHeader className="pb-3 border-b border-border">
                   <div className="flex justify-between items-center">
                     <CardTitle className="text-[10px] font-mono uppercase tracking-widest text-orange-400 font-bold flex items-center gap-1.5">
                       <LineChart className="w-3.5 h-3.5" /> Retracements & Levels
@@ -706,7 +706,7 @@ export default function StrategyBuilder({
                       Macro Frame
                     </Badge>
                   </div>
-                  <CardDescription className="text-[10px] text-slate-400 mt-1 font-sans">
+                  <CardDescription className="text-[10px] text-muted-foreground mt-1 font-sans">
                     Dynamic visualization of the current price position relative to key Golden Ratio layers.
                   </CardDescription>
                 </CardHeader>
@@ -714,8 +714,8 @@ export default function StrategyBuilder({
                   
                   {/* Custom Fibonacci Input & Reverse Toggle */}
                   <div className="space-y-2">
-                    <label className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block">Custom Retracement Level</label>
-                    <div className="flex gap-2 items-center bg-[#07090e] border border-slate-800 rounded-lg p-1.5">
+                    <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider block">Custom Retracement Level</label>
+                    <div className="flex gap-2 items-center bg-muted dark:bg-[#07090e] border border-border dark:border-slate-800 rounded-lg p-1.5">
                       <div className="flex-1 relative">
                         <input 
                           type="text"
@@ -768,17 +768,17 @@ export default function StrategyBuilder({
                   </div>
 
                   {/* Vertical Level Tracker */}
-                  <div className="flex-1 min-h-[380px] bg-[#07090e] border border-slate-800/80 rounded-xl p-4 font-mono text-xs flex flex-col justify-between relative">
+                  <div className="flex-1 min-h-[380px] bg-background dark:bg-[#07090e] border border-border dark:border-slate-800/80 rounded-xl p-4 font-mono text-xs flex flex-col justify-between relative">
                     
                     {/* Background Grid Lines */}
-                    <div className="absolute inset-x-0 top-1/4 border-b border-slate-900/40 pointer-events-none" />
-                    <div className="absolute inset-x-0 top-2/4 border-b border-slate-900/40 pointer-events-none" />
-                    <div className="absolute inset-x-0 top-3/4 border-b border-slate-900/40 pointer-events-none" />
+                    <div className="absolute inset-x-0 top-1/4 border-b border-border/40 pointer-events-none" />
+                    <div className="absolute inset-x-0 top-2/4 border-b border-border/40 pointer-events-none" />
+                    <div className="absolute inset-x-0 top-3/4 border-b border-border/40 pointer-events-none" />
 
                     {/* Cycle High Reference */}
-                    <div className="flex justify-between items-center border-b border-slate-800/40 pb-1.5">
-                      <span className="text-[10px] text-slate-500 font-bold">CYCLE HIGH</span>
-                      <span className="text-slate-300 font-bold">${strategyCycleHigh.toLocaleString()}</span>
+                    <div className="flex justify-between items-center border-b border-border dark:border-slate-800/40 pb-1.5">
+                      <span className="text-[10px] text-muted-foreground font-bold">CYCLE HIGH</span>
+                      <span className="text-foreground dark:text-slate-300 font-bold">${strategyCycleHigh.toLocaleString()}</span>
                     </div>
 
                     {/* Dynamic Fibonacci Retracement Levels */}
@@ -797,17 +797,17 @@ export default function StrategyBuilder({
                               className={`flex justify-between items-center relative py-1 px-1.5 rounded transition-all ${
                                 isGoldenZone 
                                   ? 'bg-emerald-500/5 border border-emerald-500/20' 
-                                  : 'border border-transparent hover:bg-slate-900/30'
+                                  : 'border border-transparent hover:bg-muted/30 dark:hover:bg-slate-900/30'
                               }`}
                             >
-                              <span className={`bg-[#07090e] px-1 z-10 text-[10px] font-semibold flex items-center gap-1 ${
+                              <span className={`bg-background dark:bg-[#07090e] px-1 z-10 text-[10px] font-semibold flex items-center gap-1 ${
                                 isGoldenZone ? 'text-emerald-400 font-bold' : 'text-amber-500/70'
                               }`}>
                                 {isGoldenZone && <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />}
                                 {level.toFixed(3)} {isGoldenTop ? 'GOLDEN TOP' : isGoldenFloor ? 'GOLDEN FLOOR' : 'Level'}
                               </span>
-                              <span className={`bg-[#07090e] pl-1 z-10 font-bold ${
-                                isGoldenZone ? 'text-emerald-300' : 'text-slate-400'
+                              <span className={`bg-background dark:bg-[#07090e] pl-1 z-10 font-bold ${
+                                isGoldenZone ? 'text-emerald-300' : 'text-muted-foreground'
                               }`}>
                                 ${Math.round(price).toLocaleString()}
                               </span>
@@ -817,9 +817,9 @@ export default function StrategyBuilder({
                     </div>
 
                     {/* Cycle Low Reference */}
-                    <div className="flex justify-between items-center border-t border-slate-800/40 pt-1.5 mt-1">
-                      <span className="text-[10px] text-slate-500 font-bold">CYCLE LOW</span>
-                      <span className="text-slate-300 font-bold">${strategyCycleLow.toLocaleString()}</span>
+                    <div className="flex justify-between items-center border-t border-border dark:border-slate-800/40 pt-1.5 mt-1">
+                      <span className="text-[10px] text-muted-foreground font-bold">CYCLE LOW</span>
+                      <span className="text-foreground dark:text-slate-300 font-bold">${strategyCycleLow.toLocaleString()}</span>
                     </div>
 
                     {/* Reactive Indicator Pin showing simulated price position */}
@@ -834,18 +834,18 @@ export default function StrategyBuilder({
 
                   </div>
 
-                  <div className="bg-[#07090e]/60 rounded-xl p-3 border border-slate-800/60 space-y-2 text-xs">
-                    <p className="font-mono text-[9px] uppercase text-slate-500 tracking-widest font-semibold block">Confluence Diagnostics</p>
+                  <div className="bg-muted/60 dark:bg-[#07090e]/60 rounded-xl p-3 border border-border dark:border-slate-800/60 space-y-2 text-xs">
+                    <p className="font-mono text-[9px] uppercase text-muted-foreground tracking-widest font-semibold block">Confluence Diagnostics</p>
                     <div className="grid grid-cols-2 gap-2 text-[11px] font-mono leading-relaxed">
                       <div className="flex items-center gap-1.5">
                         <span className={`w-2 h-2 rounded-full ${isSimPriceInZone ? 'bg-emerald-500' : 'bg-amber-500'}`} />
-                        <span className="text-slate-400">Fib Golden Zone:</span>
-                        <span className="font-semibold text-slate-200">{isSimPriceInZone ? 'YES' : 'NO'}</span>
+                        <span className="text-muted-foreground">Fib Golden Zone:</span>
+                        <span className="font-semibold text-foreground dark:text-slate-200">{isSimPriceInZone ? 'YES' : 'NO'}</span>
                       </div>
                       <div className="flex items-center gap-1.5">
                         <span className={`w-2 h-2 rounded-full ${isSimVmcGreen ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
-                        <span className="text-slate-400">VMC Green Dot:</span>
-                        <span className="font-semibold text-slate-200">{isSimVmcGreen ? 'YES' : 'NO'}</span>
+                        <span className="text-muted-foreground">VMC Green Dot:</span>
+                        <span className="font-semibold text-foreground dark:text-slate-200">{isSimVmcGreen ? 'YES' : 'NO'}</span>
                       </div>
                     </div>
                   </div>
@@ -859,8 +859,8 @@ export default function StrategyBuilder({
             <div className="lg:col-span-4 space-y-6">
               
               {/* 🛡️ Connection B: HyperLiquid Delegation Card */}
-              <Card className="bg-[#0c0f17] border-slate-800/80 shadow-xl shadow-black/40">
-                <CardHeader className="pb-3 border-b border-slate-900/60">
+              <Card className="bg-card text-card-foreground border border-border dark:border-slate-800/80 shadow-md">
+                <CardHeader className="pb-3 border-b border-border">
                   <div className="flex justify-between items-center">
                     <CardTitle className="text-[10px] font-mono uppercase tracking-widest text-orange-400 font-bold flex items-center gap-1.5">
                       <ShieldCheck className="w-3.5 h-3.5" /> HyperLiquid L1 Ledger
@@ -869,7 +869,7 @@ export default function StrategyBuilder({
                       {hlPermission.status}
                     </Badge>
                   </div>
-                  <CardDescription className="text-[10px] text-slate-400 mt-1 font-sans">
+                  <CardDescription className="text-[10px] text-muted-foreground mt-1 font-sans">
                     Delegate an ephemeral agent key via EIP-712 typed structured signatures to authorize automatic long triggers.
                   </CardDescription>
                 </CardHeader>
@@ -877,7 +877,7 @@ export default function StrategyBuilder({
                   
                   {/* Account parameters */}
                   <div className="space-y-1.5">
-                    <div className="flex justify-between text-[9px] text-slate-500 uppercase tracking-widest">
+                    <div className="flex justify-between text-[9px] text-muted-foreground uppercase tracking-widest">
                       <span>EPHEMERAL AGENT CONNECTION</span>
                       <button 
                         onClick={() => triggerCopy(hlPermission.agentAddress, 'agentAddr')}
@@ -886,27 +886,27 @@ export default function StrategyBuilder({
                         {copiedLabel === 'agentAddr' ? 'COPIED' : 'COPY'}
                       </button>
                     </div>
-                    <div className="p-2 bg-[#07090e] border border-slate-800 rounded text-[10px] text-slate-300 break-all leading-normal font-semibold">
+                    <div className="p-2 bg-muted dark:bg-[#07090e] border border-border dark:border-slate-800 rounded text-[10px] text-foreground dark:text-slate-300 break-all leading-normal font-semibold">
                       {hlPermission.agentAddress}
                     </div>
                   </div>
 
                   {hlPermission.isDelegated ? (
                     <div className="space-y-3.5">
-                      <div className="bg-[#07090e]/60 rounded-lg p-3 border border-emerald-950/40 text-[11px] text-slate-300 space-y-1.5">
+                      <div className="bg-muted/60 dark:bg-[#07090e]/60 rounded-lg p-3 border border-border dark:border-emerald-950/40 text-[11px] text-foreground dark:text-slate-300 space-y-1.5">
                         <div className="flex justify-between items-center text-emerald-400 font-bold text-xs">
                           <span className="flex items-center gap-1"><Lock className="w-3 h-3" /> Connection Authorized</span>
-                          <span className="text-[9px] text-slate-500">at {hlPermission.timestamp}</span>
+                          <span className="text-[9px] text-muted-foreground">at {hlPermission.timestamp}</span>
                         </div>
-                        <p className="text-[10px] text-slate-400 leading-normal font-sans">
+                        <p className="text-[10px] text-muted-foreground leading-normal font-sans">
                           A cryptographic connection signature was registered on-chain. Ephemeral executor has 5.0 USDC gas-isolated gas boundaries.
                         </p>
                       </div>
 
                       {hlSignature && (
                         <div>
-                          <span className="text-[9px] text-slate-500 uppercase block mb-1">Generated Cryptographic Proof</span>
-                          <div className="p-2 bg-[#07090e]/80 border border-slate-800 text-[10px] rounded text-emerald-500/90 break-all leading-relaxed font-semibold">
+                          <span className="text-[9px] text-muted-foreground uppercase block mb-1">Generated Cryptographic Proof</span>
+                          <div className="p-2 bg-muted/80 dark:bg-[#07090e]/80 border border-border dark:border-slate-800 text-[10px] rounded text-emerald-500/90 break-all leading-relaxed font-semibold">
                             {hlSignature.substring(0, 32)}...{hlSignature.substring(hlSignature.length - 12)}
                           </div>
                         </div>
@@ -922,7 +922,7 @@ export default function StrategyBuilder({
                     </div>
                   ) : (
                     <div className="space-y-3">
-                      <p className="text-[11px] text-slate-400 font-sans leading-normal">
+                      <p className="text-[11px] text-muted-foreground font-sans leading-normal">
                         No delegation registered. To grant automated execution permission, trigger standard EIP-712 structured payload sign flow.
                       </p>
 
@@ -934,10 +934,10 @@ export default function StrategyBuilder({
                       </Button>
 
                       {/* Expandable EIP-712 JSON preview */}
-                      <div className="border border-slate-850 rounded-lg overflow-hidden bg-[#07090e]/40">
+                      <div className="border border-border dark:border-slate-850 rounded-lg overflow-hidden bg-muted/40 dark:bg-[#07090e]/40">
                         <button
                           onClick={() => setIsPayloadOpen(!isPayloadOpen)}
-                          className="w-full p-2 text-left text-[9px] text-slate-500 hover:text-slate-300 font-mono flex items-center justify-between"
+                          className="w-full p-2 text-left text-[9px] text-muted-foreground hover:text-foreground font-mono flex items-center justify-between"
                         >
                           <span>PREVIEW EIP-712 STRUCTURED TYPED DATA</span>
                           <ChevronRight className={`w-3.5 h-3.5 transition-transform ${isPayloadOpen ? 'rotate-90' : ''}`} />
@@ -976,8 +976,8 @@ export default function StrategyBuilder({
               </Card>
 
               {/* ⚖️ Connection C: Reactive Active Positions */}
-              <Card className="bg-[#0c0f17] border-slate-800/80 shadow-xl shadow-black/40">
-                <CardHeader className="pb-2 border-b border-slate-900/60">
+              <Card className="bg-card text-card-foreground border border-border dark:border-slate-800/80 shadow-md">
+                <CardHeader className="pb-2 border-b border-border">
                   <div className="flex justify-between items-center">
                     <CardTitle className="text-[10px] font-mono uppercase tracking-widest text-orange-400 font-bold flex items-center gap-1.5">
                       <Layers className="w-3.5 h-3.5" /> L1 Active Positions
@@ -993,14 +993,14 @@ export default function StrategyBuilder({
                       {hlPositions.map((pos) => {
                         const isProfit = pos.unrealizedPnl >= 0;
                         return (
-                          <div key={pos.id} className="bg-[#07090e] border border-slate-800/80 rounded-lg p-3 space-y-2 last:mb-0">
+                          <div key={pos.id} className="bg-muted dark:bg-[#07090e] border border-border dark:border-slate-800/80 rounded-lg p-3 space-y-2 last:mb-0">
                             <div className="flex justify-between items-center">
                               <div className="flex items-center gap-1.5">
                                 <Badge className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[9px] font-bold py-0.5">
                                   {pos.type}
                                 </Badge>
-                                <span className="font-bold text-slate-200">{pos.symbol}-PERP</span>
-                                <span className="text-[10px] text-slate-500">{pos.leverage}x</span>
+                                <span className="font-bold text-foreground dark:text-slate-200">{pos.symbol}-PERP</span>
+                                <span className="text-[10px] text-muted-foreground">{pos.leverage}x</span>
                               </div>
                               <button 
                                 onClick={() => closePosition(pos.id)}
@@ -1010,21 +1010,21 @@ export default function StrategyBuilder({
                               </button>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-2 text-[10px] text-slate-400 pt-1">
+                            <div className="grid grid-cols-2 gap-2 text-[10px] text-muted-foreground pt-1">
                               <div>
-                                <span className="block text-[8px] text-slate-500 uppercase">POSITION SIZE</span>
-                                <span className="font-bold text-slate-300">{pos.size} {pos.symbol}</span>
+                                <span className="block text-[8px] text-muted-foreground/80 uppercase">POSITION SIZE</span>
+                                <span className="font-bold text-foreground dark:text-slate-300">{pos.size} {pos.symbol}</span>
                               </div>
                               <div>
-                                <span className="block text-[8px] text-slate-500 uppercase">ENTRY PRICE</span>
-                                <span className="font-bold text-slate-300">${pos.entryPrice.toLocaleString()}</span>
+                                <span className="block text-[8px] text-muted-foreground/80 uppercase">ENTRY PRICE</span>
+                                <span className="font-bold text-foreground dark:text-slate-300">${pos.entryPrice.toLocaleString()}</span>
                               </div>
                               <div>
-                                <span className="block text-[8px] text-slate-500 uppercase">MARK SIM PRICE</span>
-                                <span className="font-bold text-slate-300">${pos.markPrice.toLocaleString()}</span>
+                                <span className="block text-[8px] text-muted-foreground/80 uppercase">MARK SIM PRICE</span>
+                                <span className="font-bold text-foreground dark:text-slate-300">${pos.markPrice.toLocaleString()}</span>
                               </div>
                               <div>
-                                <span className="block text-[8px] text-slate-500 uppercase">UNREALIZED P&L</span>
+                                <span className="block text-[8px] text-muted-foreground/80 uppercase">UNREALIZED P&L</span>
                                 <span className={`font-black ${isProfit ? 'text-emerald-400' : 'text-rose-500'}`}>
                                   {isProfit ? '+' : ''}${pos.unrealizedPnl.toLocaleString()}
                                 </span>
@@ -1035,8 +1035,8 @@ export default function StrategyBuilder({
                       })}
                     </div>
                   ) : (
-                    <div className="py-8 text-center text-slate-500 font-sans">
-                      <TrendingUp className="w-8 h-8 mx-auto mb-1.5 opacity-30 text-slate-400" />
+                    <div className="py-8 text-center text-muted-foreground font-sans">
+                      <TrendingUp className="w-8 h-8 mx-auto mb-1.5 opacity-30 text-muted-foreground" />
                       No active on-chain positions. Trigger standard confluence long order to allocate contracts.
                     </div>
                   )}
@@ -1044,14 +1044,14 @@ export default function StrategyBuilder({
               </Card>
 
               {/* 🧠 Connection D: AI Architect Chat Switcher Card */}
-              <Card className="bg-[#0c0f17] border-slate-800/80 shadow-xl shadow-black/40">
-                <CardHeader className="pb-3 border-b border-slate-900/60">
+              <Card className="bg-card text-card-foreground border border-border dark:border-slate-800/80 shadow-md">
+                <CardHeader className="pb-3 border-b border-border">
                   <CardTitle className="text-[10px] font-mono uppercase tracking-widest text-orange-400 font-bold flex items-center gap-1.5">
                     <Cpu className="w-3.5 h-3.5" /> AI Architect Integration
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="pt-4 space-y-2.5 font-mono text-xs">
-                  <p className="text-[11px] text-slate-400 font-sans leading-normal">
+                  <p className="text-[11px] text-muted-foreground font-sans leading-normal">
                     One-click switcher triggers deep on-chain audit queries in your secure server-side Gemini Assistant Panel.
                   </p>
 
@@ -1059,7 +1059,7 @@ export default function StrategyBuilder({
                     onClick={() => {
                       onSendToAI(`Analyze ${strategySymbol.split(":")[1]?.replace("USDT", "") || "BTC"} setup using my confluence rules (Simulated price: $${strategySimPrice.toLocaleString()}). Check if Fibonacci supports a deep long retracement trade!`);
                     }}
-                    className="w-full text-left p-2.5 bg-[#07090e] hover:bg-slate-900/40 border border-slate-800 text-xs text-slate-300 rounded-lg transition-all flex items-center justify-between font-mono"
+                    className="w-full text-left p-2.5 bg-background dark:bg-[#07090e] hover:bg-muted/40 dark:hover:bg-slate-900/40 border border-border dark:border-slate-800 text-xs text-foreground dark:text-slate-300 rounded-lg transition-all flex items-center justify-between font-mono"
                   >
                     <span>Audit macro setup using custom rules...</span>
                     <ChevronRight className="w-3.5 h-3.5 text-orange-500 shrink-0" />
@@ -1069,7 +1069,7 @@ export default function StrategyBuilder({
                     onClick={() => {
                       onSendToAI(`Evaluate the security of EIP-712 structured data for HyperLiquid ledger delegator. Here is my connection agentAddress: ${hlPermission.agentAddress}. Confirm if isolated gas controls are solid!`);
                     }}
-                    className="w-full text-left p-2.5 bg-[#07090e] hover:bg-slate-900/40 border border-slate-800 text-xs text-slate-300 rounded-lg transition-all flex items-center justify-between font-mono"
+                    className="w-full text-left p-2.5 bg-background dark:bg-[#07090e] hover:bg-muted/40 dark:hover:bg-slate-900/40 border border-border dark:border-slate-800 text-xs text-foreground dark:text-slate-300 rounded-lg transition-all flex items-center justify-between font-mono"
                   >
                     <span>Security audit of delegated agent keys...</span>
                     <ChevronRight className="w-3.5 h-3.5 text-orange-500 shrink-0" />
