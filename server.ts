@@ -1582,21 +1582,10 @@ To unsubscribe, go to ${unsubscribeUrl}`;
       });
       ws.send(initialPayload);
 
-      ws.on("message", (message: string) => {
-        try {
-          const parsed = JSON.parse(message);
-          if (parsed.type === "set-pillar") {
-            const { id, score } = parsed.data;
-            livePillars = livePillars.map(p => p.id === id ? { ...p, currentScore: score } : p);
-          } else if (parsed.type === "set-btc-price") {
-            const { price } = parsed.data;
-            livePrices.BTC.price = price;
-            btcPrice = price;
-          }
-        } catch (e: any) {
-          console.error("[WS Message Error]", e.message);
-        }
-      });
+      // NOTE: The server intentionally does NOT accept client-authored price/pillar
+      // overrides. Those are personal what-if simulations handled locally in each
+      // client. Broadcasting them here would let any anonymous client change the
+      // BTC price / pillar scores that every other connected user sees.
     });
   }
 
