@@ -1,6 +1,7 @@
 import express from "express";
 import path from "path";
 import fs from "fs";
+import crypto from "node:crypto";
 import axios from "axios";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -353,6 +354,29 @@ async function startServer() {
 
     next();
   });
+
+  // Constant-time secret comparison (hash first so unequal lengths don't leak via timingSafeEqual).
+  function secretsMatch(a: string, b: string): boolean {
+    const ha = crypto.createHash("sha256").update(a).digest();
+    const hb = crypto.createHash("sha256").update(b).digest();
+    return crypto.timingSafeEqual(ha, hb);
+  }
+
+  // Admin guard for privileged routes (subscriber list, manual broadcast).
+  // Fails closed: if ADMIN_API_KEY is unset the admin API is disabled entirely.
+  function requireAdmin(req: express.Request, res: express.Response, next: express.NextFunction) {
+    const configured = process.env.ADMIN_API_KEY;
+    if (!configured) {
+      return res.status(503).json({ error: "Admin API is disabled. Set ADMIN_API_KEY to enable it." });
+    }
+    const headerKey = (req.headers["x-admin-key"] as string) || "";
+    const bearer = (req.headers["authorization"] as string || "").replace(/^Bearer\s+/i, "");
+    const provided = headerKey || bearer;
+    if (!provided || !secretsMatch(provided, configured)) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+    next();
+  }
 
   // Secure Server-side Route for Gemini Chat (using @google/genai recommended standards)
   app.post("/api/gemini/chat", async (req, res) => {
@@ -1020,12 +1044,25 @@ Please output your analysis as a JSON object with the following fields:
   // API Route for Bear Market Bottom clock subscription & welcome email
   app.post("/api/subscribe-clock", async (req, res) => {
     try {
-      const { email } = req.body;
-      if (!email || typeof email !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      const rawEmail = req.body?.email;
+      if (!rawEmail || typeof rawEmail !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(rawEmail)) {
         return res.status(400).json({ error: "A valid email address is required" });
       }
+      // Normalize so dedupe/unsubscribe are case-insensitive and consistent.
+      const email = rawEmail.trim().toLowerCase();
 
       console.log(`[Clock Subscription] Received subscription request for email: ${email}`);
+
+      // Idempotent: if already subscribed, don't re-send the welcome email. This
+      // prevents an attacker from repeatedly POSTing a victim's address to bomb
+      // their inbox with welcome emails.
+      if (getSubscribers().some(e => e.toLowerCase() === email)) {
+        return res.json({
+          success: true,
+          alreadySubscribed: true,
+          message: "This email is already subscribed. No duplicate welcome email was sent.",
+        });
+      }
 
       const nextUpdateDateStr = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
         .toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
@@ -1238,7 +1275,7 @@ To unsubscribe, go to ${unsubscribeUrl}`;
   });
 
   // Admin APIs for Scheduler & Subscription diagnostics
-  app.get("/api/admin/clock-subscribers", (req, res) => {
+  app.get("/api/admin/clock-subscribers", requireAdmin, (req, res) => {
     try {
       const subscribers = getSubscribers();
       res.json({ count: subscribers.length, subscribers });
@@ -1247,7 +1284,7 @@ To unsubscribe, go to ${unsubscribeUrl}`;
     }
   });
 
-  app.post("/api/admin/trigger-clock-update", async (req, res) => {
+  app.post("/api/admin/trigger-clock-update", requireAdmin, async (req, res) => {
     try {
       console.log("[Admin API] Manually triggering 7-day clock update to all subscribers...");
       await sendWeeklyClockUpdate();
@@ -1365,6 +1402,11 @@ To unsubscribe, go to ${unsubscribeUrl}`;
       console.error("[Unsubscribe Error]:", error);
       res.status(500).send("<h1>Internal Server Error</h1><p>Failed to process unsubscribe request.</p>");
     }
+  });
+
+  // Unknown API routes should return JSON 404s, not fall through to the SPA's index.html.
+  app.all("/api/*", (req, res) => {
+    res.status(404).json({ error: `No such API route: ${req.method} ${req.path}` });
   });
 
   // Vite middleware for development (imported dynamically to avoid production startup crashes)
