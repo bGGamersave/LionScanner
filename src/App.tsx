@@ -218,6 +218,33 @@ export default function App() {
     return () => clearInterval(interval);
   }, [userTier, expiry]);
 
+  // On load, refresh the paid entitlement from the server so tier/tokens are
+  // authoritative (localStorage alone can't grant a paid tier). Also restores
+  // the plan after switching devices once the email claim token is present.
+  useEffect(() => {
+    const email = localStorage.getItem('swarm_entitlement_email');
+    const token = localStorage.getItem('swarm_entitlement_token');
+    if (!email || !token) return;
+    fetch(`/api/entitlements/me?email=${encodeURIComponent(email)}`, {
+      headers: { 'x-entitlement-token': token },
+    })
+      .then(r => (r.ok ? r.json() : null))
+      .then(data => {
+        const ent = data?.entitlement;
+        if (!ent) return;
+        const active = ent.tierExpiry && ent.tierExpiry > Date.now();
+        const tier = active ? ent.tier : 'free';
+        setUserTier(tier);
+        localStorage.setItem('swarm_user_tier', tier);
+        if (ent.tierExpiry) localStorage.setItem('swarm_membership_expiry', String(ent.tierExpiry));
+        if (typeof ent.tokens === 'number') {
+          setAnalysisTokens(ent.tokens);
+          localStorage.setItem('lion_analysis_tokens', String(ent.tokens));
+        }
+      })
+      .catch(() => { /* offline / not reachable — keep local state */ });
+  }, []);
+
   // 1W Projection Modal States
   const [projectionAsset, setProjectionAsset] = useState<MarketAsset | null>(null);
   const [isProjectionLoading, setIsProjectionLoading] = useState(false);
@@ -2164,76 +2191,50 @@ What are the critical price milestones and exact validation triggers we should m
             <SmartContractPayment
               isOpen={!!activePurchaseProduct}
               onClose={() => setActivePurchaseProduct(null)}
-              tier={activePurchaseProduct.id}
+              productId={activePurchaseProduct.id}
               price={activePurchaseProduct.price}
               packName={activePurchaseProduct.name}
-              walletAddress={walletAddress}
-              onConnectWallet={() => {
-                setActivePurchaseProduct(null);
-                setIsProfileModalOpen(true);
-              }}
-              usdcBalance={usdcBalance}
-              setUsdcBalance={(newBal) => {
-                setUsdcBalance(newBal);
-                localStorage.setItem('swarm_wallet_usdc', newBal.toString());
-              }}
-              solBalance={solBalance}
-              setSolBalance={(newBal) => {
-                setSolBalance(newBal);
-                localStorage.setItem('swarm_wallet_sol', newBal.toString());
-              }}
-              onSuccess={() => {
-                // If it is a premium tier pack:
-                if (['basic', 'pro', 'ultimate'].includes(activePurchaseProduct.id)) {
-                  const targetTier = activePurchaseProduct.id as 'basic' | 'pro' | 'ultimate';
-                  setUserTier(targetTier);
-                  localStorage.setItem('swarm_user_tier', targetTier);
+              defaultEmail={profileEmail || undefined}
+              onSuccess={(result) => {
+                const ent = result.entitlement;
 
-                  // Calculate and store membership expiration
-                  const daysToAdd = activePurchaseProduct.id === 'ultimate' ? 360 : activePurchaseProduct.id === 'pro' ? 120 : 30;
-                  const newExpiry = Date.now() + daysToAdd * 24 * 60 * 60 * 1000;
-                  localStorage.setItem('swarm_membership_expiry', newExpiry.toString());
+                // Persist the email + claim token so the plan can be restored on any device.
+                localStorage.setItem('swarm_entitlement_email', result.email);
+                localStorage.setItem('swarm_entitlement_token', result.claimToken);
+
+                if (ent) {
+                  // The server is authoritative for tier / expiry / tokens.
+                  if (ent.tier && ent.tier !== 'free') {
+                    setUserTier(ent.tier);
+                    localStorage.setItem('swarm_user_tier', ent.tier);
+                  }
+                  if (ent.tierExpiry) {
+                    localStorage.setItem('swarm_membership_expiry', String(ent.tierExpiry));
+                  }
+                  if (typeof ent.tokens === 'number') {
+                    setAnalysisTokens(ent.tokens);
+                    localStorage.setItem('lion_analysis_tokens', String(ent.tokens));
+                  }
+
+                  // Reflect the server-recorded receipt in the local ledger for display.
+                  const latest = ent.receipts && ent.receipts[0];
+                  if (latest) {
+                    const newReceipt = {
+                      id: `RCPT-${Math.floor(100000 + Math.random() * 900000)}`,
+                      tier: latest.productId,
+                      price: latest.amountUsd,
+                      billingCycle: latest.name,
+                      date: latest.date,
+                      txHash: latest.txSignature,
+                      status: 'Paid'
+                    };
+                    const updatedReceipts = [newReceipt, ...receipts];
+                    setReceipts(updatedReceipts);
+                    localStorage.setItem('swarm_receipts', JSON.stringify(updatedReceipts));
+                  }
                 }
 
-                // Credit the purchased analysis tokens
-                const addedTokens = activePurchaseProduct.tokens;
-                setAnalysisTokens(prev => {
-                  const next = prev + addedTokens;
-                  localStorage.setItem('lion_analysis_tokens', next.toString());
-                  return next;
-                });
-
-                // Generate and save subscription receipt
-                const newReceipt = {
-                  id: `RCPT-${Math.floor(100000 + Math.random() * 900000)}`,
-                  tier: activePurchaseProduct.id,
-                  price: activePurchaseProduct.price,
-                  billingCycle: activePurchaseProduct.tokens > 0 ? `+${activePurchaseProduct.tokens} Tokens` : 'Refill',
-                  date: Date.now(),
-                  txHash: `SOL-${Math.floor(Math.random() * 100000000).toString(16).toUpperCase()}`,
-                  status: 'Paid'
-                };
-                const updatedReceipts = [newReceipt, ...receipts];
-                setReceipts(updatedReceipts);
-                localStorage.setItem('swarm_receipts', JSON.stringify(updatedReceipts));
-                
-                // If they have email saved, automatically backup/sync as well
-                if (profileEmail) {
-                  const profileData = {
-                    username,
-                    avatarUrl,
-                    email: profileEmail,
-                    walletAddress,
-                    connectedBlockchain,
-                    walletType,
-                    snapshotsCount: receipts.length, // approximation or loaded
-                    receipts: updatedReceipts,
-                    updatedAt: Date.now()
-                  };
-                  localStorage.setItem('swarm_profile_data_' + profileEmail, JSON.stringify(profileData));
-                }
-
-                setToastMessage(`Success! Purchased ${activePurchaseProduct.name} successfully.`);
+                setToastMessage(`Success! ${activePurchaseProduct.name} is now active.`);
                 setActivePurchaseProduct(null);
                 setIsSubscriptionModalOpen(false);
               }}

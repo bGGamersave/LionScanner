@@ -28,10 +28,11 @@ interface Product {
   days?: number;   // membership duration for tier products
   tokens: number;  // analysis tokens credited
 }
+// Prices/tokens must match the products offered in the client UI (App.tsx).
 const PRODUCTS: Record<ProductId, Product> = {
-  basic:     { name: "Basic Plan",           usd: 5,  tier: "basic",    days: 30,  tokens: 0 },
-  pro:       { name: "Pro Plan",             usd: 15, tier: "pro",      days: 120, tokens: 0 },
-  ultimate:  { name: "Ultimate Plan",        usd: 29, tier: "ultimate", days: 360, tokens: 0 },
+  basic:     { name: "30-Day Premium Pack",   usd: 10, tier: "basic",    days: 30,  tokens: 30 },
+  pro:       { name: "120-Day Premium Pack",  usd: 25, tier: "pro",      days: 120, tokens: 120 },
+  ultimate:  { name: "360-Day Premium Pack",  usd: 60, tier: "ultimate", days: 360, tokens: 360 },
   token_50:  { name: "50 AI Scanner Tokens",  usd: 10, tokens: 50 },
   token_200: { name: "200 AI Scanner Tokens", usd: 30, tokens: 200 },
   token_500: { name: "500 AI Scanner Tokens", usd: 50, tokens: 500 },
