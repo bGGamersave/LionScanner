@@ -354,15 +354,6 @@ async function startServer() {
     next();
   });
 
-  // Secure server route to retrieve the Gemini key for browser-side direct calling, as explicitly requested by the user.
-  app.get("/api/gemini/key", (req, res) => {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      return res.status(500).json({ error: "GEMINI_API_KEY is not configured on the server." });
-    }
-    return res.json({ apiKey });
-  });
-
   // Secure Server-side Route for Gemini Chat (using @google/genai recommended standards)
   app.post("/api/gemini/chat", async (req, res) => {
     try {
