@@ -9,8 +9,43 @@ import nodemailer from "nodemailer";
 import { Resend } from "resend";
 import { GoogleGenAI, Type } from "@google/genai";
 import { WebSocketServer, WebSocket } from "ws";
+import { Connection, Keypair, PublicKey } from "@solana/web3.js";
+import { encodeURL, findReference, validateTransfer, FindReferenceError } from "@solana/pay";
+import BigNumber from "bignumber.js";
 
 dotenv.config();
+
+// ---------------------------------------------------------------------------
+// Payments (Solana Pay) + entitlements configuration
+// ---------------------------------------------------------------------------
+// Authoritative product catalog. Prices are set server-side; the client's
+// requested price is never trusted. `usd` is charged 1:1 in USDC.
+type ProductId = "basic" | "pro" | "ultimate" | "token_50" | "token_200" | "token_500";
+interface Product {
+  name: string;
+  usd: number;
+  tier?: "basic" | "pro" | "ultimate";
+  days?: number;   // membership duration for tier products
+  tokens: number;  // analysis tokens credited
+}
+const PRODUCTS: Record<ProductId, Product> = {
+  basic:     { name: "Basic Plan",           usd: 5,  tier: "basic",    days: 30,  tokens: 0 },
+  pro:       { name: "Pro Plan",             usd: 15, tier: "pro",      days: 120, tokens: 0 },
+  ultimate:  { name: "Ultimate Plan",        usd: 29, tier: "ultimate", days: 360, tokens: 0 },
+  token_50:  { name: "50 AI Scanner Tokens",  usd: 10, tokens: 50 },
+  token_200: { name: "200 AI Scanner Tokens", usd: 30, tokens: 200 },
+  token_500: { name: "500 AI Scanner Tokens", usd: 50, tokens: 500 },
+};
+
+// Mainnet USDC mint (override for devnet testing via SOLANA_USDC_MINT).
+const USDC_MINT = process.env.SOLANA_USDC_MINT || "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+const SOLANA_RPC_URL = process.env.SOLANA_RPC_URL || "https://api.mainnet-beta.solana.com";
+const SOLANA_RECIPIENT_WALLET = process.env.SOLANA_RECIPIENT_WALLET || "";
+// USDC has 6 decimals.
+const USDC_DECIMALS = 6;
+
+// Secret used to sign entitlement claim tokens (HMAC). Falls back to ADMIN_API_KEY.
+const ENTITLEMENT_SECRET = process.env.ENTITLEMENT_SECRET || process.env.ADMIN_API_KEY || "";
 
 // Sender identity for all outbound mail. The domain must be verified with the
 // configured delivery provider (Resend / SMTP) or the message will be rejected.
@@ -1402,6 +1437,313 @@ To unsubscribe, go to ${unsubscribeUrl}`;
       console.error("[Unsubscribe Error]:", error);
       res.status(500).send("<h1>Internal Server Error</h1><p>Failed to process unsubscribe request.</p>");
     }
+  });
+
+  // =========================================================================
+  // Payments (Solana Pay) + email-based entitlements
+  // =========================================================================
+  const PAYMENTS_FILE = path.join(process.cwd(), "payments.json");
+  const ENTITLEMENTS_FILE = path.join(process.cwd(), "entitlements.json");
+  const ENT_CODES_FILE = path.join(process.cwd(), "entitlement-codes.json");
+
+  interface PaymentRecord {
+    paymentId: string;
+    reference: string;      // base58 public key used as the Solana Pay reference
+    productId: ProductId;
+    email: string;
+    amountUsd: number;
+    status: "pending" | "confirmed" | "expired";
+    createdAt: number;
+    confirmedAt?: number;
+    txSignature?: string;
+  }
+  interface Receipt {
+    productId: ProductId;
+    name: string;
+    amountUsd: number;
+    txSignature: string;
+    date: number;
+  }
+  interface Entitlement {
+    email: string;
+    tier: "free" | "basic" | "pro" | "ultimate";
+    tierExpiry: number | null;
+    tokens: number;
+    updatedAt: number;
+    receipts: Receipt[];
+  }
+
+  function readJsonFile<T>(file: string, fallback: T): T {
+    try {
+      if (fs.existsSync(file)) return JSON.parse(fs.readFileSync(file, "utf-8")) as T;
+    } catch (e) {
+      console.error(`Error reading ${file}:`, e);
+    }
+    return fallback;
+  }
+  function writeJsonFile(file: string, data: unknown): void {
+    try {
+      fs.writeFileSync(file, JSON.stringify(data, null, 2), "utf-8");
+    } catch (e) {
+      console.error(`Error writing ${file}:`, e);
+    }
+  }
+
+  const getPayments = () => readJsonFile<PaymentRecord[]>(PAYMENTS_FILE, []);
+  const savePayments = (p: PaymentRecord[]) => writeJsonFile(PAYMENTS_FILE, p);
+  const getEntitlements = () => readJsonFile<Record<string, Entitlement>>(ENTITLEMENTS_FILE, {});
+  const saveEntitlements = (e: Record<string, Entitlement>) => writeJsonFile(ENTITLEMENTS_FILE, e);
+
+  // HMAC claim token binds an email to its entitlement without a login system.
+  function signClaim(email: string): string {
+    return crypto.createHmac("sha256", ENTITLEMENT_SECRET || "insecure-dev-secret")
+      .update(email.toLowerCase()).digest("hex");
+  }
+  function verifyClaim(email: string, token: string): boolean {
+    if (!email || !token) return false;
+    const expected = signClaim(email);
+    const a = Buffer.from(expected);
+    const b = Buffer.from(token);
+    return a.length === b.length && crypto.timingSafeEqual(a, b);
+  }
+
+  // Apply a purchased product to an email's entitlement (grant tier/tokens, add receipt).
+  function grantProduct(email: string, product: Product, productId: ProductId, txSignature: string): Entitlement {
+    const all = getEntitlements();
+    const key = email.toLowerCase();
+    const existing: Entitlement = all[key] || {
+      email: key, tier: "free", tierExpiry: null, tokens: 0, updatedAt: Date.now(), receipts: [],
+    };
+    if (product.tier && product.days) {
+      // Extend from the later of now or the current (unexpired) expiry.
+      const base = existing.tierExpiry && existing.tierExpiry > Date.now() && existing.tier === product.tier
+        ? existing.tierExpiry : Date.now();
+      existing.tier = product.tier;
+      existing.tierExpiry = base + product.days * 24 * 60 * 60 * 1000;
+    }
+    if (product.tokens) existing.tokens += product.tokens;
+    existing.updatedAt = Date.now();
+    existing.receipts.unshift({
+      productId, name: product.name, amountUsd: product.usd, txSignature, date: Date.now(),
+    });
+    all[key] = existing;
+    saveEntitlements(all);
+    return existing;
+  }
+
+  const isValidEmail = (e: unknown): e is string =>
+    typeof e === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
+
+  // ---- Create a Solana Pay payment request -------------------------------
+  app.post("/api/payments/solana/create", (req, res) => {
+    try {
+      const { productId, email } = req.body || {};
+      if (!productId || !(productId in PRODUCTS)) {
+        return res.status(400).json({ error: "Unknown productId" });
+      }
+      if (!isValidEmail(email)) {
+        return res.status(400).json({ error: "A valid email address is required" });
+      }
+      if (!SOLANA_RECIPIENT_WALLET) {
+        return res.status(503).json({ error: "Payments are not configured (SOLANA_RECIPIENT_WALLET is unset)." });
+      }
+
+      let recipient: PublicKey;
+      let splToken: PublicKey;
+      try {
+        recipient = new PublicKey(SOLANA_RECIPIENT_WALLET);
+        splToken = new PublicKey(USDC_MINT);
+      } catch {
+        return res.status(500).json({ error: "Server payment wallet/mint is misconfigured." });
+      }
+
+      const product = PRODUCTS[productId as ProductId];
+      const reference = Keypair.generate().publicKey;
+      const amount = new BigNumber(product.usd);
+
+      const url = encodeURL({
+        recipient,
+        amount,
+        splToken,
+        reference,
+        label: "Lion Scanner",
+        message: `Lion Scanner — ${product.name}`,
+      });
+
+      const payment: PaymentRecord = {
+        paymentId: crypto.randomUUID(),
+        reference: reference.toBase58(),
+        productId: productId as ProductId,
+        email: email.toLowerCase(),
+        amountUsd: product.usd,
+        status: "pending",
+        createdAt: Date.now(),
+      };
+      const payments = getPayments();
+      payments.push(payment);
+      savePayments(payments);
+
+      res.json({
+        paymentId: payment.paymentId,
+        reference: payment.reference,
+        url: url.toString(),
+        amountUsd: product.usd,
+        recipient: recipient.toBase58(),
+        splToken: splToken.toBase58(),
+        productName: product.name,
+      });
+    } catch (error: any) {
+      console.error("[Payments/create] Error:", error);
+      res.status(500).json({ error: error.message || "Failed to create payment" });
+    }
+  });
+
+  // ---- Verify a Solana Pay payment on-chain ------------------------------
+  app.get("/api/payments/solana/verify", async (req, res) => {
+    try {
+      const reference = req.query.reference;
+      if (typeof reference !== "string") {
+        return res.status(400).json({ error: "reference is required" });
+      }
+
+      const payments = getPayments();
+      const payment = payments.find(p => p.reference === reference);
+      if (!payment) {
+        return res.status(404).json({ error: "Unknown payment reference" });
+      }
+
+      // Idempotent: already verified.
+      if (payment.status === "confirmed") {
+        const ent = getEntitlements()[payment.email];
+        return res.json({ status: "confirmed", entitlement: ent, claimToken: signClaim(payment.email) });
+      }
+
+      const connection = new Connection(SOLANA_RPC_URL, "confirmed");
+      const referencePk = new PublicKey(reference);
+
+      let signatureInfo;
+      try {
+        signatureInfo = await findReference(connection, referencePk, { finality: "confirmed" });
+      } catch (err) {
+        if (err instanceof FindReferenceError) {
+          return res.json({ status: "pending" }); // not paid yet
+        }
+        throw err;
+      }
+
+      // Validate the transfer actually matches recipient + amount + token + reference.
+      await validateTransfer(
+        connection,
+        signatureInfo.signature,
+        {
+          recipient: new PublicKey(SOLANA_RECIPIENT_WALLET),
+          amount: new BigNumber(payment.amountUsd),
+          splToken: new PublicKey(USDC_MINT),
+          reference: referencePk,
+        },
+        { commitment: "confirmed" }
+      );
+
+      // Mark confirmed + grant entitlement.
+      payment.status = "confirmed";
+      payment.confirmedAt = Date.now();
+      payment.txSignature = signatureInfo.signature;
+      savePayments(payments);
+
+      const product = PRODUCTS[payment.productId];
+      const entitlement = grantProduct(payment.email, product, payment.productId, signatureInfo.signature);
+      console.log(`[Payments] Confirmed ${payment.productId} for ${payment.email} (tx ${signatureInfo.signature})`);
+
+      res.json({ status: "confirmed", entitlement, claimToken: signClaim(payment.email) });
+    } catch (error: any) {
+      // validateTransfer throws if the on-chain transfer doesn't match — treat as not-yet-valid.
+      console.warn("[Payments/verify] Not yet valid:", error?.message || error);
+      res.json({ status: "pending", detail: error?.message });
+    }
+  });
+
+  // ---- Email-based entitlement claim (unlock on any device) --------------
+  app.post("/api/entitlements/request-code", async (req, res) => {
+    try {
+      const { email } = req.body || {};
+      if (!isValidEmail(email)) return res.status(400).json({ error: "A valid email address is required" });
+      const key = email.toLowerCase();
+
+      // Only issue a code if there's actually an entitlement to claim.
+      const ent = getEntitlements()[key];
+      if (!ent) {
+        return res.status(404).json({ error: "No entitlement found for this email." });
+      }
+
+      const code = String(Math.floor(100000 + Math.random() * 900000));
+      const codes = readJsonFile<Record<string, { codeHash: string; expiresAt: number; attempts: number }>>(ENT_CODES_FILE, {});
+      codes[key] = {
+        codeHash: crypto.createHash("sha256").update(code).digest("hex"),
+        expiresAt: Date.now() + 10 * 60 * 1000,
+        attempts: 0,
+      };
+      writeJsonFile(ENT_CODES_FILE, codes);
+
+      const result = await sendEmail({
+        to: key,
+        subject: "🦁 Your Lion Scanner access code",
+        text: `Your Lion Scanner verification code is ${code}. It expires in 10 minutes.`,
+        html: `<p>Your Lion Scanner verification code is <strong style="font-size:20px;letter-spacing:2px;">${code}</strong>.</p><p>It expires in 10 minutes.</p>`,
+      });
+      if (!result.delivered) {
+        return res.status(502).json({ error: result.error || "Failed to send verification code." });
+      }
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("[Entitlements/request-code] Error:", error);
+      res.status(500).json({ error: error.message || "Failed to send code" });
+    }
+  });
+
+  app.post("/api/entitlements/verify-code", (req, res) => {
+    try {
+      const { email, code } = req.body || {};
+      if (!isValidEmail(email) || typeof code !== "string") {
+        return res.status(400).json({ error: "Email and code are required" });
+      }
+      const key = email.toLowerCase();
+      const codes = readJsonFile<Record<string, { codeHash: string; expiresAt: number; attempts: number }>>(ENT_CODES_FILE, {});
+      const entry = codes[key];
+      if (!entry || entry.expiresAt < Date.now()) {
+        return res.status(400).json({ error: "Code expired or not requested. Request a new one." });
+      }
+      if (entry.attempts >= 5) {
+        return res.status(429).json({ error: "Too many attempts. Request a new code." });
+      }
+      entry.attempts += 1;
+      writeJsonFile(ENT_CODES_FILE, codes);
+
+      const providedHash = crypto.createHash("sha256").update(code).digest("hex");
+      const ok = providedHash.length === entry.codeHash.length &&
+        crypto.timingSafeEqual(Buffer.from(providedHash), Buffer.from(entry.codeHash));
+      if (!ok) return res.status(401).json({ error: "Incorrect code" });
+
+      delete codes[key];
+      writeJsonFile(ENT_CODES_FILE, codes);
+
+      const entitlement = getEntitlements()[key];
+      if (!entitlement) return res.status(404).json({ error: "No entitlement found for this email." });
+      res.json({ entitlement, claimToken: signClaim(key) });
+    } catch (error: any) {
+      console.error("[Entitlements/verify-code] Error:", error);
+      res.status(500).json({ error: error.message || "Failed to verify code" });
+    }
+  });
+
+  // Re-fetch current entitlement using the stored claim token (e.g. on app load).
+  app.get("/api/entitlements/me", (req, res) => {
+    const email = (req.query.email as string) || "";
+    const token = (req.headers["x-entitlement-token"] as string) || (req.query.token as string) || "";
+    if (!isValidEmail(email) || !verifyClaim(email, token)) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+    const entitlement = getEntitlements()[email.toLowerCase()] || null;
+    res.json({ entitlement });
   });
 
   // Unknown API routes should return JSON 404s, not fall through to the SPA's index.html.

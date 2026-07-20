@@ -7,6 +7,10 @@ coverage/
 .env*
 !.env.example
 
-# Runtime state written by the server (subscriber list, scheduler cursor).
+# Runtime state written by the server (subscriber list, scheduler cursor,
+# payments, entitlements, verification codes).
 clock-subscriptions.json
 clock-scheduler-state.json
+payments.json
+entitlements.json
+entitlement-codes.json
