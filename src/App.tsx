@@ -24,7 +24,7 @@ import {
   Lock,
   Gauge
 } from 'lucide-react';
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -37,18 +37,27 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 
 import Chart from './components/Chart';
-import Snapshots, { SnapshotData } from './components/Snapshots';
-import AIChat from './components/AIChat';
-import PerpsTrading from './components/PerpsTrading';
 import FullPortTimer from './components/FullPortTimer';
-import StrategyBuilder from './components/StrategyBuilder';
-import CycleMonitor from './components/CycleMonitor';
 import ProfileModal from './components/ProfileModal';
-import SmartContractPayment from './components/SmartContractPayment';
 import WalletDetailsModal from './components/WalletDetailsModal';
+import type { SnapshotData } from './components/Snapshots';
+// Heavy, conditionally-rendered views are code-split so the initial load stays light.
+const Snapshots = lazy(() => import('./components/Snapshots'));
+const AIChat = lazy(() => import('./components/AIChat'));
+const PerpsTrading = lazy(() => import('./components/PerpsTrading'));
+const StrategyBuilder = lazy(() => import('./components/StrategyBuilder'));
+const CycleMonitor = lazy(() => import('./components/CycleMonitor'));
+const SmartContractPayment = lazy(() => import('./components/SmartContractPayment'));
 import { TIMEFRAME_ANALYSIS } from './data/timeframeAnalysis';
 import { PRO_SIGNALS, PERP_ASSETS } from './data/perpsAndSignals';
 import { SEARCHABLE_MARKETS, MarketAsset } from './data/markets';
+
+// Fallback shown while a code-split view/modal chunk is loading.
+const TabLoader = () => (
+  <div className="flex items-center justify-center py-24 text-muted-foreground">
+    <Loader2 className="w-6 h-6 animate-spin text-primary" />
+  </div>
+);
 
 const TIMEFRAMES = [
   { id: '60', label: '1H', desc: 'Hourly Scalp' },
@@ -1005,7 +1014,7 @@ Establish position in the current accumulation range with a stop loss below **$$
         <div className="flex-1 flex overflow-hidden relative">
           <ScrollArea className="flex-1 p-4 md:p-6 bg-background">
             <div className="max-w-7xl mx-auto space-y-6 pb-24 md:pb-6">
-              
+              <Suspense fallback={<TabLoader />}>
               {activeTab === 'dashboard' ? (
                 <>
                   {/* Full Port back into Crypto Countdown Timer */}
@@ -1638,6 +1647,7 @@ Can you perform an advanced confirmation analyze of this recommendation using co
                   userTier={userTier}
                 />
               )}
+              </Suspense>
             </div>
           </ScrollArea>
           
@@ -1693,7 +1703,8 @@ Can you perform an advanced confirmation analyze of this recommendation using co
           {/* AI Chat Floating Box - Fully Responsive and Safe on Mobile */}
           {isChatOpen && (
             <div className="fixed bottom-20 md:bottom-4 right-3 left-3 sm:left-auto sm:right-4 w-auto sm:w-[360px] md:w-[400px] h-[520px] md:h-[600px] max-h-[75vh] md:max-h-[85vh] z-50 flex flex-col shadow-2xl rounded-2xl overflow-hidden border border-border bg-background">
-              <AIChat 
+              <Suspense fallback={<TabLoader />}>
+              <AIChat
                 selectedSnapshot={selectedSnapshot} 
                 onClearSnapshot={() => setSelectedSnapshot(null)} 
                 onClose={() => setIsChatOpen(false)}
@@ -1720,6 +1731,7 @@ Can you perform an advanced confirmation analyze of this recommendation using co
                   });
                 }}
               />
+              </Suspense>
             </div>
           )}
 
@@ -2188,6 +2200,7 @@ What are the critical price milestones and exact validation triggers we should m
 
           {/* Smart Contract Web3 Payment Modal */}
           {activePurchaseProduct && (
+            <Suspense fallback={<TabLoader />}>
             <SmartContractPayment
               isOpen={!!activePurchaseProduct}
               onClose={() => setActivePurchaseProduct(null)}
@@ -2239,6 +2252,7 @@ What are the critical price milestones and exact validation triggers we should m
                 setIsSubscriptionModalOpen(false);
               }}
             />
+            </Suspense>
           )}
 
           {/* Live Recalculating overlay backdrop screen */}
