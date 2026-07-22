@@ -22,7 +22,8 @@ import {
   X,
   RefreshCw,
   Lock,
-  Gauge
+  Gauge,
+  Zap
 } from 'lucide-react';
 import React, { useState, useEffect, useRef } from 'react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -46,6 +47,7 @@ import CycleMonitor from './components/CycleMonitor';
 import ProfileModal from './components/ProfileModal';
 import SmartContractPayment from './components/SmartContractPayment';
 import WalletDetailsModal from './components/WalletDetailsModal';
+import MarketTicker from './components/MarketTicker';
 import { TIMEFRAME_ANALYSIS } from './data/timeframeAnalysis';
 import { PRO_SIGNALS, PERP_ASSETS } from './data/perpsAndSignals';
 import { SEARCHABLE_MARKETS, MarketAsset } from './data/markets';
@@ -111,7 +113,7 @@ export default function App() {
   const [aiInitialPrompt, setAiInitialPrompt] = useState<string | null>(null);
 
   // --- Quantitative Strategy Hub State ---
-  const [strategyCycleHigh, setStrategyCycleHigh] = useState<number>(69000);
+  const [strategyCycleHigh, setStrategyCycleHigh] = useState<number>(126198);
   const [strategyCycleLow, setStrategyCycleLow] = useState<number>(15500);
   const [strategySimPrice, setStrategySimPrice] = useState<number>(45000);
   const [strategyGreenDotTimeframes, setStrategyGreenDotTimeframes] = useState<string[]>([]);
@@ -785,6 +787,19 @@ Establish position in the current accumulation range with a stop loss below **$$
               <Badge variant="outline" className="ml-auto border-orange-500/30 text-orange-400 text-[8px] font-mono font-bold">QUANT</Badge>
             </Button>
             <Button 
+              variant="ghost"
+              className="w-full justify-start pl-8 text-muted-foreground hover:text-foreground h-8 text-xs -mt-1"
+              onClick={() => {
+                setActiveTab('strategy');
+                setTimeout(() => {
+                  document.getElementById('leverage-simulator')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }, 100);
+              }}
+            >
+              <Zap className="mr-2 h-3 w-3 text-orange-500" />
+              Leverage Trade Simulator
+            </Button>
+            <Button 
               variant={activeTab === 'monitor' ? 'secondary' : 'ghost'} 
               className={`w-full justify-start ${activeTab !== 'monitor' ? 'text-muted-foreground hover:text-foreground' : ''}`}
               onClick={() => setActiveTab('monitor')}
@@ -973,6 +988,9 @@ Establish position in the current accumulation range with a stop loss below **$$
             </div>
           </div>
         </header>
+
+        {/* Market Ticker (Top 10 / Gainers / Losers) */}
+        <MarketTicker />
 
         {/* Dynamic Content View */}
         <div className="flex-1 flex overflow-hidden relative">
