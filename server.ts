@@ -1,82 +1,169 @@
 import express from "express";
 import path from "path";
 import fs from "fs";
+import crypto from "node:crypto";
 import axios from "axios";
 import cors from "cors";
 import dotenv from "dotenv";
 import nodemailer from "nodemailer";
+import { Resend } from "resend";
 import { GoogleGenAI, Type } from "@google/genai";
 import { WebSocketServer, WebSocket } from "ws";
+import { Connection, Keypair, PublicKey } from "@solana/web3.js";
+import { encodeURL, findReference, validateTransfer, FindReferenceError } from "@solana/pay";
+import BigNumber from "bignumber.js";
 
 dotenv.config();
 
-/**
- * Shared email sender handling Resend (preferred), SMTP, or Ethereal (local dev).
- */
-async function sendEmail({ to, subject, html, text }: { to: string; subject: string; html: string; text?: string }) {
-  const from = process.env.EMAIL_FROM || process.env.SMTP_FROM || '"Lions Swarm AI" <noreply@lionscanner.net>';
+// ---------------------------------------------------------------------------
+// Payments (Solana Pay) + entitlements configuration
+// ---------------------------------------------------------------------------
+// Authoritative product catalog. Prices are set server-side; the client's
+// requested price is never trusted. `usd` is charged 1:1 in USDC.
+type ProductId = "basic" | "pro" | "ultimate" | "token_50" | "token_200" | "token_500";
+interface Product {
+  name: string;
+  usd: number;
+  tier?: "basic" | "pro" | "ultimate";
+  days?: number;   // membership duration for tier products
+  tokens: number;  // analysis tokens credited
+}
+// Prices/tokens must match the products offered in the client UI (App.tsx).
+const PRODUCTS: Record<ProductId, Product> = {
+  basic:     { name: "30-Day Premium Pack",   usd: 10, tier: "basic",    days: 30,  tokens: 30 },
+  pro:       { name: "120-Day Premium Pack",  usd: 25, tier: "pro",      days: 120, tokens: 120 },
+  ultimate:  { name: "360-Day Premium Pack",  usd: 60, tier: "ultimate", days: 360, tokens: 360 },
+  token_50:  { name: "50 AI Scanner Tokens",  usd: 10, tokens: 50 },
+  token_200: { name: "200 AI Scanner Tokens", usd: 30, tokens: 200 },
+  token_500: { name: "500 AI Scanner Tokens", usd: 50, tokens: 500 },
+};
 
-  // 1. Resend (Preferred)
-  if (process.env.RESEND_API_KEY) {
+// Mainnet USDC mint (override for devnet testing via SOLANA_USDC_MINT).
+const USDC_MINT = process.env.SOLANA_USDC_MINT || "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+const SOLANA_RPC_URL = process.env.SOLANA_RPC_URL || "https://api.mainnet-beta.solana.com";
+const SOLANA_RECIPIENT_WALLET = process.env.SOLANA_RECIPIENT_WALLET || "";
+
+// Secret used to sign entitlement claim tokens (HMAC). Prefer an explicit env var;
+// fall back to ADMIN_API_KEY; and if neither is set, generate a random per-process
+// secret so claim tokens can never be forged. (A random secret means tokens don't
+// survive a server restart — acceptable, since the JSON entitlement store is itself
+// ephemeral — and users can re-unlock via the email code flow.)
+const ENTITLEMENT_SECRET =
+  process.env.ENTITLEMENT_SECRET ||
+  process.env.ADMIN_API_KEY ||
+  crypto.randomBytes(32).toString("hex");
+if (!process.env.ENTITLEMENT_SECRET && !process.env.ADMIN_API_KEY) {
+  console.warn(
+    "[Entitlements] Neither ENTITLEMENT_SECRET nor ADMIN_API_KEY is set — using a " +
+    "random per-process secret. Claim tokens will be invalidated on restart. Set " +
+    "ENTITLEMENT_SECRET in production for stable, secure entitlement claims."
+  );
+}
+
+// Sender identity for all outbound mail. The domain must be verified with the
+// configured delivery provider (Resend / SMTP) or the message will be rejected.
+const EMAIL_FROM = process.env.EMAIL_FROM || process.env.SMTP_FROM || '"Lions Swarm AI" <noreply@lionscanner.net>';
+
+const resendClient = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
+
+interface OutboundEmail {
+  to: string;
+  subject: string;
+  html: string;
+  text?: string;
+}
+
+interface EmailSendResult {
+  delivered: boolean;
+  provider: "resend" | "smtp" | "ethereal" | "console";
+  previewUrl?: string;
+  error?: string;
+}
+
+async function sendEmail(msg: OutboundEmail): Promise<EmailSendResult> {
+  // 1) Resend (preferred once RESEND_API_KEY is set)
+  if (resendClient) {
     try {
-      const response = await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${process.env.RESEND_API_KEY}`
-        },
-        body: JSON.stringify({ from, to, subject, html, text: text || "" })
+      const { error } = await resendClient.emails.send({
+        from: EMAIL_FROM,
+        to: [msg.to],
+        subject: msg.subject,
+        html: msg.html,
+        text: msg.text,
       });
-      
-      const data = await response.json();
-      if (!response.ok) {
-        return { success: false, error: `[Email/Resend] Delivery error: ${data.message || JSON.stringify(data)}` };
+      if (error) {
+        console.error("[Email/Resend] Delivery error:", error);
+        return { delivered: false, provider: "resend", error: (error as any).message || String(error) };
       }
-      return { success: true, provider: "resend", id: data.id };
-    } catch (error: any) {
-      return { success: false, error: `[Email/Resend] Network error: ${error.message || String(error)}` };
+      console.log(`[Email/Resend] Delivered to ${msg.to}`);
+      return { delivered: true, provider: "resend" };
+    } catch (err: any) {
+      console.error("[Email/Resend] Threw:", err);
+      return { delivered: false, provider: "resend", error: err?.message || String(err) };
     }
   }
-  
-  // 2. SMTP (Backward compatibility)
+
+  // 2) Generic SMTP fallback (kept for backward-compat with legacy deployments)
   if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
     try {
       const transporter = nodemailer.createTransport({
         host: process.env.SMTP_HOST,
         port: parseInt(process.env.SMTP_PORT || "587"),
         secure: process.env.SMTP_PORT === "465",
-        auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
+        auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
       });
-      
-      await transporter.sendMail({ from, to, subject, text, html });
-      return { success: true, provider: "smtp" };
+      await transporter.sendMail({
+        from: EMAIL_FROM,
+        to: msg.to,
+        subject: msg.subject,
+        html: msg.html,
+        text: msg.text,
+      });
+      console.log(`[Email/SMTP] Delivered to ${msg.to}`);
+      return { delivered: true, provider: "smtp" };
     } catch (err: any) {
-      return { success: false, error: `[Email/SMTP] Delivery error: ${err.message || String(err)}` };
+      console.error("[Email/SMTP] Threw:", err);
+      return { delivered: false, provider: "smtp", error: err?.message || String(err) };
     }
   }
 
-  // 3. Ethereal (Dev fallback)
-  try {
-    const testAccount = await nodemailer.createTestAccount();
-    const transporter = nodemailer.createTransport({
-      host: "smtp.ethereal.email",
-      port: 587,
-      secure: false,
-      auth: { user: testAccount.user, pass: testAccount.pass }
-    });
+  // No real email provider is configured. Give callers a clear, actionable reason
+  // (this is what the user sees when the "Remind Me" / access-code buttons fail).
+  const NOT_CONFIGURED_MSG =
+    "Email delivery isn't configured yet. Set RESEND_API_KEY (and a verified EMAIL_FROM " +
+    "domain) — or SMTP_HOST/SMTP_USER/SMTP_PASS — to enable emails.";
 
-    const info = await transporter.sendMail({ from, to, subject, text, html });
-    const previewUrl = nodemailer.getTestMessageUrl(info) || "";
-
-    console.log(`\n================== TEST EMAIL SENT (ETHEREAL) ==================`);
-    console.log(`To: ${to}`);
-    console.log(`Preview URL: ${previewUrl}`);
-    console.log(`================================================================\n`);
-    
-    return { success: false, error: "No provider configured", previewUrl };
-  } catch (err: any) {
-    return { success: false, error: `[Email/Ethereal] Delivery error: ${err.message || String(err)}` };
+  // 3) Local-dev only: render a preview via Ethereal so developers can see the email
+  // without a real provider. Never attempted in production (it needs outbound access
+  // to api.nodemailer.com and doesn't actually deliver — it would just surface a
+  // confusing error to real users).
+  if (process.env.NODE_ENV !== "production") {
+    try {
+      const testAccount = await nodemailer.createTestAccount();
+      const transporter = nodemailer.createTransport({
+        host: "smtp.ethereal.email",
+        port: 587,
+        secure: false,
+        auth: { user: testAccount.user, pass: testAccount.pass },
+      });
+      const info = await transporter.sendMail({
+        from: EMAIL_FROM,
+        to: msg.to,
+        subject: msg.subject,
+        html: msg.html,
+        text: msg.text,
+      });
+      const previewUrl = nodemailer.getTestMessageUrl(info) || undefined;
+      console.log(`[Email/Ethereal] Preview-only send to ${msg.to} → ${previewUrl}`);
+      return { delivered: false, provider: "ethereal", previewUrl, error: NOT_CONFIGURED_MSG };
+    } catch (err: any) {
+      console.error("[Email/Ethereal] Threw:", err);
+      // Fall through to the generic not-configured response below.
+    }
   }
+
+  console.error(`[Email] No provider configured — cannot deliver to ${msg.to}.`);
+  return { delivered: false, provider: "console", error: NOT_CONFIGURED_MSG };
 }
 
 const FALLBACK_QUOTES: Record<string, { name: string; price: number; change_24h: number; volume: number; market_cap: number; high: number; low: number }> = {
@@ -327,14 +414,28 @@ async function startServer() {
     next();
   });
 
-  // Secure server route to retrieve the Gemini key for browser-side direct calling, as explicitly requested by the user.
-  app.get("/api/gemini/key", (req, res) => {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      return res.status(500).json({ error: "GEMINI_API_KEY is not configured on the server." });
+  // Constant-time secret comparison (hash first so unequal lengths don't leak via timingSafeEqual).
+  function secretsMatch(a: string, b: string): boolean {
+    const ha = crypto.createHash("sha256").update(a).digest();
+    const hb = crypto.createHash("sha256").update(b).digest();
+    return crypto.timingSafeEqual(ha, hb);
+  }
+
+  // Admin guard for privileged routes (subscriber list, manual broadcast).
+  // Fails closed: if ADMIN_API_KEY is unset the admin API is disabled entirely.
+  function requireAdmin(req: express.Request, res: express.Response, next: express.NextFunction) {
+    const configured = process.env.ADMIN_API_KEY;
+    if (!configured) {
+      return res.status(503).json({ error: "Admin API is disabled. Set ADMIN_API_KEY to enable it." });
     }
-    return res.json({ apiKey });
-  });
+    const headerKey = (req.headers["x-admin-key"] as string) || "";
+    const bearer = (req.headers["authorization"] as string || "").replace(/^Bearer\s+/i, "");
+    const provided = headerKey || bearer;
+    if (!provided || !secretsMatch(provided, configured)) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+    next();
+  }
 
   // Secure Server-side Route for Gemini Chat (using @google/genai recommended standards)
   app.post("/api/gemini/chat", async (req, res) => {
@@ -671,20 +772,23 @@ async function startServer() {
         throw new Error("Invalid data format from CoinGecko");
       }
 
-      const top10MarketCap = data.slice(0, 10).map(coin => ({
+      const stablecoins = ['USDT', 'USDC', 'DAI', 'FDUSD', 'USDD', 'TUSD', 'USDE'];
+      const nonStableData = data.filter(coin => !stablecoins.includes(coin.symbol.toUpperCase()));
+
+      const top10MarketCap = nonStableData.slice(0, 10).map(coin => ({
         symbol: coin.symbol.toUpperCase(),
         price: coin.current_price,
         change24h: coin.price_change_percentage_24h
       }));
 
-      const sortedByGain = [...data].sort((a, b) => (b.price_change_percentage_24h || 0) - (a.price_change_percentage_24h || 0));
+      const sortedByGain = [...nonStableData].sort((a, b) => (b.price_change_percentage_24h || 0) - (a.price_change_percentage_24h || 0));
       const top10Gainers = sortedByGain.slice(0, 10).map(coin => ({
         symbol: coin.symbol.toUpperCase(),
         price: coin.current_price,
         change24h: coin.price_change_percentage_24h
       }));
 
-      const sortedByLoss = [...data].sort((a, b) => (a.price_change_percentage_24h || 0) - (b.price_change_percentage_24h || 0));
+      const sortedByLoss = [...nonStableData].sort((a, b) => (a.price_change_percentage_24h || 0) - (b.price_change_percentage_24h || 0));
       const top10Losers = sortedByLoss.slice(0, 10).map(coin => ({
         symbol: coin.symbol.toUpperCase(),
         price: coin.current_price,
@@ -703,10 +807,12 @@ async function startServer() {
     } catch (error: any) {
       console.error("Error fetching market movers:", error.message);
       // Return fallback data
+      const stablecoins = ['USDT', 'USDC', 'DAI', 'FDUSD', 'USDD', 'TUSD', 'USDE'];
+      const nonStableFallback = Object.values(FALLBACK_QUOTES).filter(q => !stablecoins.includes(q.name.toUpperCase()));
       const fallbackData = {
-        top10MarketCap: Object.values(FALLBACK_QUOTES).slice(0, 10).map(q => ({ symbol: q.name, price: q.price, change24h: q.change_24h })),
-        top10Gainers: Object.values(FALLBACK_QUOTES).filter(q => q.change_24h > 0).sort((a, b) => b.change_24h - a.change_24h).slice(0, 10).map(q => ({ symbol: q.name, price: q.price, change24h: q.change_24h })),
-        top10Losers: Object.values(FALLBACK_QUOTES).filter(q => q.change_24h < 0).sort((a, b) => a.change_24h - b.change_24h).slice(0, 10).map(q => ({ symbol: q.name, price: q.price, change24h: q.change_24h })),
+        top10MarketCap: nonStableFallback.slice(0, 10).map(q => ({ symbol: q.name, price: q.price, change24h: q.change_24h })),
+        top10Gainers: nonStableFallback.filter(q => q.change_24h > 0).sort((a, b) => b.change_24h - a.change_24h).slice(0, 10).map(q => ({ symbol: q.name, price: q.price, change24h: q.change_24h })),
+        top10Losers: nonStableFallback.filter(q => q.change_24h < 0).sort((a, b) => a.change_24h - b.change_24h).slice(0, 10).map(q => ({ symbol: q.name, price: q.price, change24h: q.change_24h })),
         timestamp: Date.now()
       };
       res.json(fallbackData);
@@ -1001,19 +1107,15 @@ Please output your analysis as a JSON object with the following fields:
         </div>
       `;
 
-      try {
-        const result = await sendEmail({
-          to: email,
-          subject: `🦁 7-Day Update: ${daysVal} Days Left to Bear Market Bottom!`,
-          html: emailHtml
-        });
-        if (result.success) {
-          console.log(`[Clock Scheduler] Weekly snapshot email successfully sent to ${email} (via ${result.provider})`);
-        } else {
-          console.error(`[Clock Scheduler Error] Failed to send email to ${email}:`, result.error);
-        }
-      } catch (err: any) {
-        console.error(`[Clock Scheduler Error] Exception sending email to ${email}:`, err.message || err);
+      const result = await sendEmail({
+        to: email,
+        subject: `🦁 7-Day Update: ${daysVal} Days Left to Bear Market Bottom!`,
+        html: emailHtml,
+      });
+      if (result.delivered) {
+        console.log(`[Clock Scheduler] Weekly snapshot email successfully sent to ${email} via ${result.provider}`);
+      } else {
+        console.error(`[Clock Scheduler Error] Failed to send weekly email to ${email} via ${result.provider}: ${result.error || "no provider"}`);
       }
     }
   }
@@ -1072,12 +1174,28 @@ Please output your analysis as a JSON object with the following fields:
   // API Route for Bear Market Bottom clock subscription & welcome email
   app.post("/api/subscribe-clock", async (req, res) => {
     try {
-      const { email } = req.body;
-      if (!email || typeof email !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      const rawEmail = req.body?.email;
+      if (!rawEmail || typeof rawEmail !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(rawEmail)) {
         return res.status(400).json({ error: "A valid email address is required" });
       }
+      // Normalize so dedupe/unsubscribe are case-insensitive and consistent.
+      const email = rawEmail.trim().toLowerCase();
 
       console.log(`[Clock Subscription] Received subscription request for email: ${email}`);
+
+      // Idempotent: if already subscribed, don't re-send the welcome email. This
+      // prevents an attacker from repeatedly POSTing a victim's address to bomb
+      // their inbox with welcome emails.
+      if (getSubscribers().some(e => e.toLowerCase() === email)) {
+        return res.json({
+          success: true,
+          alreadySubscribed: true,
+          message: "This email is already subscribed. No duplicate welcome email was sent.",
+        });
+      }
+
+      const nextUpdateDateStr = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+        .toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
 
       // Calculate target countdown clock snapshot values at the time of subscription
       const targetDate = new Date('2026-10-01T00:00:00');
@@ -1101,10 +1219,6 @@ Please output your analysis as a JSON object with the following fields:
         minutes = String(minutesVal).padStart(2, '0');
         seconds = String(secondsVal).padStart(2, '0');
       }
-
-      const nextDate = new Date();
-      nextDate.setDate(nextDate.getDate() + 7);
-      const nextDateString = nextDate.toLocaleDateString("en-US", { month: "long", day: "numeric" });
 
       // Determine robust App URL
       const reqHost = req.get('host') || "localhost:3000";
@@ -1139,7 +1253,7 @@ Please output your analysis as a JSON object with the following fields:
             <div style="background-color: rgba(249, 115, 22, 0.08); border-left: 4px solid #f97316; padding: 15px; border-radius: 4px; margin-bottom: 25px;">
               <p style="color: #f97316; font-size: 13px; font-weight: bold; margin: 0 0 5px 0; font-family: monospace;">NOTIFICATION SCHEDULE</p>
               <p style="color: #cbd5e1; font-size: 13px; margin: 0; line-height: 1.5;">
-                You will receive a snapshot of the countdown clock <strong>every 7 days</strong> directly in your inbox. Your first update will arrive on ${nextDateString}.
+                You will receive a snapshot of the countdown clock <strong>every 7 days</strong> directly in your inbox. Your next update is scheduled to arrive around <strong>${nextUpdateDateStr}</strong>.
               </p>
             </div>
 
@@ -1249,32 +1363,23 @@ Thank you so much for subscribing to the lionscanner.net Bear Market Bottom Coun
 Time Remaining: ${daysVal} Days, ${hoursVal} Hours, ${minutesVal} Minutes, ${secondsVal} Seconds left until October 1st, 2026.
 --------------------------------------------------
 
-You will receive a snapshot of the countdown clock every 7 days directly in your inbox. Your first update will arrive on ${nextDateString}.
+You will receive a snapshot of the countdown clock every 7 days directly in your inbox. Your next update is scheduled to arrive around ${nextUpdateDateStr}.
 
 Explore Active Swarm Tools at ${appUrl}
 
 To unsubscribe, go to ${unsubscribeUrl}`;
 
-      let previewUrl = "";
-      
-      const result = await sendEmail({
+      const sendResult = await sendEmail({
         to: email,
         subject: "🦁 Welcome: Weekly Bear Market Bottom Countdown Updates Enabled",
         text: textContent,
-        html: emailHtml
+        html: emailHtml,
       });
 
-      if (!result.success) {
-        if (result.error === "No provider configured") {
-          return res.status(502).json({ error: result.error, previewUrl: result.previewUrl });
-        }
-        return res.status(502).json({ error: result.error });
-      }
-
-      previewUrl = result.previewUrl || "";
-      console.log(`[Clock Subscription] Email successfully sent to ${email} (via ${result.provider})`);
-
-      // Save email in persistent subscribers list ONLY after successful email
+      // Register the subscriber regardless of whether the welcome email went out —
+      // they asked to be reminded, and the weekly scheduler will email them once
+      // delivery is configured. We just report `emailSent` honestly so the client
+      // never claims an email was sent when it wasn't.
       const subscribers = getSubscribers();
       if (!subscribers.includes(email)) {
         subscribers.push(email);
@@ -1282,7 +1387,19 @@ To unsubscribe, go to ${unsubscribeUrl}`;
         console.log(`[Clock Subscription] Saved new subscriber to file: ${email}`);
       }
 
-      res.json({ success: true, message: "Welcome email sent successfully.", previewUrl });
+      if (sendResult.delivered) {
+        console.log(`[Clock Subscription] Welcome email sent to ${email} (via ${sendResult.provider})`);
+        res.json({ success: true, emailSent: true, message: "Welcome email sent successfully." });
+      } else {
+        console.warn(`[Clock Subscription] Subscribed ${email} but welcome email was not sent: ${sendResult.error}`);
+        res.json({
+          success: true,
+          emailSent: false,
+          message: "You're subscribed. We couldn't send a welcome email right now.",
+          warning: sendResult.error,
+          previewUrl: sendResult.previewUrl,
+        });
+      }
 
     } catch (error: any) {
       console.error("[Clock Subscription Error]:", error);
@@ -1291,7 +1408,7 @@ To unsubscribe, go to ${unsubscribeUrl}`;
   });
 
   // Admin APIs for Scheduler & Subscription diagnostics
-  app.get("/api/admin/clock-subscribers", (req, res) => {
+  app.get("/api/admin/clock-subscribers", requireAdmin, (req, res) => {
     try {
       const subscribers = getSubscribers();
       res.json({ count: subscribers.length, subscribers });
@@ -1300,7 +1417,7 @@ To unsubscribe, go to ${unsubscribeUrl}`;
     }
   });
 
-  app.post("/api/admin/trigger-clock-update", async (req, res) => {
+  app.post("/api/admin/trigger-clock-update", requireAdmin, async (req, res) => {
     try {
       console.log("[Admin API] Manually triggering 7-day clock update to all subscribers...");
       await sendWeeklyClockUpdate();
@@ -1418,6 +1535,346 @@ To unsubscribe, go to ${unsubscribeUrl}`;
       console.error("[Unsubscribe Error]:", error);
       res.status(500).send("<h1>Internal Server Error</h1><p>Failed to process unsubscribe request.</p>");
     }
+  });
+
+  // =========================================================================
+  // Payments (Solana Pay) + email-based entitlements
+  // =========================================================================
+  const PAYMENTS_FILE = path.join(process.cwd(), "payments.json");
+  const ENTITLEMENTS_FILE = path.join(process.cwd(), "entitlements.json");
+  const ENT_CODES_FILE = path.join(process.cwd(), "entitlement-codes.json");
+
+  interface PaymentRecord {
+    paymentId: string;
+    reference: string;      // base58 public key used as the Solana Pay reference
+    productId: ProductId;
+    email: string;
+    amountUsd: number;
+    status: "pending" | "confirmed" | "expired";
+    createdAt: number;
+    confirmedAt?: number;
+    txSignature?: string;
+  }
+  interface Receipt {
+    productId: ProductId;
+    name: string;
+    amountUsd: number;
+    txSignature: string;
+    date: number;
+  }
+  interface Entitlement {
+    email: string;
+    tier: "free" | "basic" | "pro" | "ultimate";
+    tierExpiry: number | null;
+    tokens: number;
+    updatedAt: number;
+    receipts: Receipt[];
+  }
+
+  function readJsonFile<T>(file: string, fallback: T): T {
+    try {
+      if (fs.existsSync(file)) return JSON.parse(fs.readFileSync(file, "utf-8")) as T;
+    } catch (e) {
+      console.error(`Error reading ${file}:`, e);
+    }
+    return fallback;
+  }
+  function writeJsonFile(file: string, data: unknown): void {
+    try {
+      fs.writeFileSync(file, JSON.stringify(data, null, 2), "utf-8");
+    } catch (e) {
+      console.error(`Error writing ${file}:`, e);
+    }
+  }
+
+  const getPayments = () => readJsonFile<PaymentRecord[]>(PAYMENTS_FILE, []);
+  const savePayments = (p: PaymentRecord[]) => writeJsonFile(PAYMENTS_FILE, p);
+  const getEntitlements = () => readJsonFile<Record<string, Entitlement>>(ENTITLEMENTS_FILE, {});
+  const saveEntitlements = (e: Record<string, Entitlement>) => writeJsonFile(ENTITLEMENTS_FILE, e);
+
+  // HMAC claim token binds an email to its entitlement without a login system.
+  // ENTITLEMENT_SECRET is always non-empty (random per-process fallback at boot).
+  function signClaim(email: string): string {
+    return crypto.createHmac("sha256", ENTITLEMENT_SECRET)
+      .update(email.toLowerCase()).digest("hex");
+  }
+  function verifyClaim(email: string, token: string): boolean {
+    if (!email || !token) return false;
+    const expected = signClaim(email);
+    const a = Buffer.from(expected);
+    const b = Buffer.from(token);
+    return a.length === b.length && crypto.timingSafeEqual(a, b);
+  }
+
+  // Apply a purchased product to an email's entitlement (grant tier/tokens, add receipt).
+  function grantProduct(email: string, product: Product, productId: ProductId, txSignature: string): Entitlement {
+    const all = getEntitlements();
+    const key = email.toLowerCase();
+    const existing: Entitlement = all[key] || {
+      email: key, tier: "free", tierExpiry: null, tokens: 0, updatedAt: Date.now(), receipts: [],
+    };
+    if (product.tier && product.days) {
+      // Extend from the later of now or the current (unexpired) expiry.
+      const base = existing.tierExpiry && existing.tierExpiry > Date.now() && existing.tier === product.tier
+        ? existing.tierExpiry : Date.now();
+      existing.tier = product.tier;
+      existing.tierExpiry = base + product.days * 24 * 60 * 60 * 1000;
+    }
+    if (product.tokens) existing.tokens += product.tokens;
+    existing.updatedAt = Date.now();
+    existing.receipts.unshift({
+      productId, name: product.name, amountUsd: product.usd, txSignature, date: Date.now(),
+    });
+    all[key] = existing;
+    saveEntitlements(all);
+    return existing;
+  }
+
+  const isValidEmail = (e: unknown): e is string =>
+    typeof e === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
+
+  // ---- Create a Solana Pay payment request -------------------------------
+  app.post("/api/payments/solana/create", (req, res) => {
+    try {
+      const { productId, email } = req.body || {};
+      if (!productId || !(productId in PRODUCTS)) {
+        return res.status(400).json({ error: "Unknown productId" });
+      }
+      if (!isValidEmail(email)) {
+        return res.status(400).json({ error: "A valid email address is required" });
+      }
+      if (!SOLANA_RECIPIENT_WALLET) {
+        return res.status(503).json({ error: "Payments are not configured (SOLANA_RECIPIENT_WALLET is unset)." });
+      }
+
+      let recipient: PublicKey;
+      let splToken: PublicKey;
+      try {
+        recipient = new PublicKey(SOLANA_RECIPIENT_WALLET);
+        splToken = new PublicKey(USDC_MINT);
+      } catch {
+        return res.status(500).json({ error: "Server payment wallet/mint is misconfigured." });
+      }
+
+      const product = PRODUCTS[productId as ProductId];
+      const reference = Keypair.generate().publicKey;
+      const amount = new BigNumber(product.usd);
+
+      const url = encodeURL({
+        recipient,
+        amount,
+        splToken,
+        reference,
+        label: "Lion Scanner",
+        message: `Lion Scanner — ${product.name}`,
+      });
+
+      const payment: PaymentRecord = {
+        paymentId: crypto.randomUUID(),
+        reference: reference.toBase58(),
+        productId: productId as ProductId,
+        email: email.toLowerCase(),
+        amountUsd: product.usd,
+        status: "pending",
+        createdAt: Date.now(),
+      };
+      const payments = getPayments();
+      payments.push(payment);
+      savePayments(payments);
+
+      res.json({
+        paymentId: payment.paymentId,
+        reference: payment.reference,
+        url: url.toString(),
+        amountUsd: product.usd,
+        recipient: recipient.toBase58(),
+        splToken: splToken.toBase58(),
+        productName: product.name,
+      });
+    } catch (error: any) {
+      console.error("[Payments/create] Error:", error);
+      res.status(500).json({ error: error.message || "Failed to create payment" });
+    }
+  });
+
+  // ---- Verify a Solana Pay payment on-chain ------------------------------
+  app.get("/api/payments/solana/verify", async (req, res) => {
+    try {
+      const reference = req.query.reference;
+      if (typeof reference !== "string") {
+        return res.status(400).json({ error: "reference is required" });
+      }
+
+      const payments = getPayments();
+      const payment = payments.find(p => p.reference === reference);
+      if (!payment) {
+        return res.status(404).json({ error: "Unknown payment reference" });
+      }
+
+      // Idempotent: already verified.
+      if (payment.status === "confirmed") {
+        const ent = getEntitlements()[payment.email];
+        return res.json({ status: "confirmed", entitlement: ent, claimToken: signClaim(payment.email) });
+      }
+
+      const connection = new Connection(SOLANA_RPC_URL, "confirmed");
+      const referencePk = new PublicKey(reference);
+
+      let signatureInfo;
+      try {
+        signatureInfo = await findReference(connection, referencePk, { finality: "confirmed" });
+      } catch (err) {
+        if (err instanceof FindReferenceError) {
+          return res.json({ status: "pending" }); // not paid yet
+        }
+        throw err;
+      }
+
+      // Validate the transfer actually matches recipient + amount + token + reference.
+      await validateTransfer(
+        connection,
+        signatureInfo.signature,
+        {
+          recipient: new PublicKey(SOLANA_RECIPIENT_WALLET),
+          amount: new BigNumber(payment.amountUsd),
+          splToken: new PublicKey(USDC_MINT),
+          reference: referencePk,
+        },
+        { commitment: "confirmed" }
+      );
+
+      // Confirm + grant inside a single SYNCHRONOUS block (re-read the store, re-check
+      // status, mark confirmed, grant). Because there is no `await` between the re-check
+      // and the write, Node's event loop runs it atomically, so two concurrent verifies
+      // of the same reference (which both passed the earlier pending check before the
+      // awaited RPC calls) cannot both grant — the second one now sees "confirmed".
+      const freshPayments = getPayments();
+      const fresh = freshPayments.find(p => p.reference === reference);
+      if (!fresh) {
+        return res.status(404).json({ error: "Unknown payment reference" });
+      }
+      if (fresh.status === "confirmed") {
+        const ent = getEntitlements()[fresh.email];
+        return res.json({ status: "confirmed", entitlement: ent, claimToken: signClaim(fresh.email) });
+      }
+      fresh.status = "confirmed";
+      fresh.confirmedAt = Date.now();
+      fresh.txSignature = signatureInfo.signature;
+      savePayments(freshPayments);
+
+      const product = PRODUCTS[fresh.productId];
+      const entitlement = grantProduct(fresh.email, product, fresh.productId, signatureInfo.signature);
+      console.log(`[Payments] Confirmed ${fresh.productId} for ${fresh.email} (tx ${signatureInfo.signature})`);
+
+      res.json({ status: "confirmed", entitlement, claimToken: signClaim(fresh.email) });
+    } catch (error: any) {
+      // validateTransfer throws if the on-chain transfer doesn't match — treat as not-yet-valid.
+      console.warn("[Payments/verify] Not yet valid:", error?.message || error);
+      res.json({ status: "pending", detail: error?.message });
+    }
+  });
+
+  // ---- Email-based entitlement claim (unlock on any device) --------------
+  const CODE_TTL_MS = 10 * 60 * 1000;
+  const CODE_RESEND_COOLDOWN_MS = 60 * 1000;
+
+  app.post("/api/entitlements/request-code", async (req, res) => {
+    try {
+      const { email } = req.body || {};
+      if (!isValidEmail(email)) return res.status(400).json({ error: "A valid email address is required" });
+      const key = email.toLowerCase();
+
+      const codes = readJsonFile<Record<string, { codeHash: string; expiresAt: number; attempts: number; createdAt: number }>>(ENT_CODES_FILE, {});
+
+      // Resend cooldown: if a still-valid code was issued in the last minute, don't
+      // overwrite it (which would reset the attempt counter) or send another email.
+      const existing = codes[key];
+      if (existing && existing.expiresAt > Date.now() && Date.now() - existing.createdAt < CODE_RESEND_COOLDOWN_MS) {
+        return res.status(429).json({ error: "A code was just sent. Please wait a minute before requesting another." });
+      }
+
+      // Only actually issue+send a code when an entitlement exists, but ALWAYS return the
+      // same generic success (password-reset style) so responses don't reveal which
+      // emails hold entitlements. Delivery failures are logged, not surfaced (the user
+      // can retry after the cooldown).
+      const ent = getEntitlements()[key];
+      if (ent) {
+        const code = String(crypto.randomInt(100000, 1000000));
+        codes[key] = {
+          codeHash: crypto.createHash("sha256").update(code).digest("hex"),
+          expiresAt: Date.now() + CODE_TTL_MS,
+          attempts: 0,
+          createdAt: Date.now(),
+        };
+        writeJsonFile(ENT_CODES_FILE, codes);
+
+        const result = await sendEmail({
+          to: key,
+          subject: "🦁 Your Lion Scanner access code",
+          text: `Your Lion Scanner verification code is ${code}. It expires in 10 minutes.`,
+          html: `<p>Your Lion Scanner verification code is <strong style="font-size:20px;letter-spacing:2px;">${code}</strong>.</p><p>It expires in 10 minutes.</p>`,
+        });
+        if (!result.delivered) {
+          console.error(`[Entitlements/request-code] Delivery failed for ${key}: ${result.error || "unknown"}`);
+        }
+      }
+
+      res.json({ success: true, message: "If that email has an active plan, we've sent a verification code." });
+    } catch (error: any) {
+      console.error("[Entitlements/request-code] Error:", error);
+      res.status(500).json({ error: error.message || "Failed to send code" });
+    }
+  });
+
+  app.post("/api/entitlements/verify-code", (req, res) => {
+    try {
+      const { email, code } = req.body || {};
+      if (!isValidEmail(email) || typeof code !== "string") {
+        return res.status(400).json({ error: "Email and code are required" });
+      }
+      const key = email.toLowerCase();
+      const codes = readJsonFile<Record<string, { codeHash: string; expiresAt: number; attempts: number }>>(ENT_CODES_FILE, {});
+      const entry = codes[key];
+      if (!entry || entry.expiresAt < Date.now()) {
+        return res.status(400).json({ error: "Code expired or not requested. Request a new one." });
+      }
+      if (entry.attempts >= 5) {
+        return res.status(429).json({ error: "Too many attempts. Request a new code." });
+      }
+      entry.attempts += 1;
+      writeJsonFile(ENT_CODES_FILE, codes);
+
+      const providedHash = crypto.createHash("sha256").update(code).digest("hex");
+      const ok = providedHash.length === entry.codeHash.length &&
+        crypto.timingSafeEqual(Buffer.from(providedHash), Buffer.from(entry.codeHash));
+      if (!ok) return res.status(401).json({ error: "Incorrect code" });
+
+      delete codes[key];
+      writeJsonFile(ENT_CODES_FILE, codes);
+
+      const entitlement = getEntitlements()[key];
+      if (!entitlement) return res.status(404).json({ error: "No entitlement found for this email." });
+      res.json({ entitlement, claimToken: signClaim(key) });
+    } catch (error: any) {
+      console.error("[Entitlements/verify-code] Error:", error);
+      res.status(500).json({ error: error.message || "Failed to verify code" });
+    }
+  });
+
+  // Re-fetch current entitlement using the stored claim token (e.g. on app load).
+  app.get("/api/entitlements/me", (req, res) => {
+    const email = (req.query.email as string) || "";
+    const token = (req.headers["x-entitlement-token"] as string) || (req.query.token as string) || "";
+    if (!isValidEmail(email) || !verifyClaim(email, token)) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+    const entitlement = getEntitlements()[email.toLowerCase()] || null;
+    res.json({ entitlement });
+  });
+
+  // Unknown API routes should return JSON 404s, not fall through to the SPA's index.html.
+  app.all("/api/*", (req, res) => {
+    res.status(404).json({ error: `No such API route: ${req.method} ${req.path}` });
   });
 
   // Vite middleware for development (imported dynamically to avoid production startup crashes)
@@ -1595,21 +2052,10 @@ To unsubscribe, go to ${unsubscribeUrl}`;
       });
       ws.send(initialPayload);
 
-      ws.on("message", (message: string) => {
-        try {
-          const parsed = JSON.parse(message);
-          if (parsed.type === "set-pillar") {
-            const { id, score } = parsed.data;
-            livePillars = livePillars.map(p => p.id === id ? { ...p, currentScore: score } : p);
-          } else if (parsed.type === "set-btc-price") {
-            const { price } = parsed.data;
-            livePrices.BTC.price = price;
-            btcPrice = price;
-          }
-        } catch (e: any) {
-          console.error("[WS Message Error]", e.message);
-        }
-      });
+      // NOTE: The server intentionally does NOT accept client-authored price/pillar
+      // overrides. Those are personal what-if simulations handled locally in each
+      // client. Broadcasting them here would let any anonymous client change the
+      // BTC price / pillar scores that every other connected user sees.
     });
   }
 
