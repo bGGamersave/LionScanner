@@ -127,32 +127,43 @@ async function sendEmail(msg: OutboundEmail): Promise<EmailSendResult> {
     }
   }
 
-  // 3) Local-dev preview via Ethereal (no real delivery)
-  try {
-    const testAccount = await nodemailer.createTestAccount();
-    const transporter = nodemailer.createTransport({
-      host: "smtp.ethereal.email",
-      port: 587,
-      secure: false,
-      auth: { user: testAccount.user, pass: testAccount.pass },
-    });
-    const info = await transporter.sendMail({
-      from: EMAIL_FROM,
-      to: msg.to,
-      subject: msg.subject,
-      html: msg.html,
-      text: msg.text,
-    });
-    const previewUrl = nodemailer.getTestMessageUrl(info) || undefined;
-    console.log(`[Email/Ethereal] Preview-only send to ${msg.to} → ${previewUrl}`);
-    // Ethereal is a preview inbox, so the message is not actually delivered
-    // to the subscriber. We report delivered=false so callers surface an
-    // accurate status instead of falsely claiming success.
-    return { delivered: false, provider: "ethereal", previewUrl, error: "No email provider configured (set RESEND_API_KEY). Rendered a preview via Ethereal instead." };
-  } catch (err: any) {
-    console.error("[Email/Ethereal] Threw:", err);
-    return { delivered: false, provider: "console", error: err?.message || String(err) };
+  // No real email provider is configured. Give callers a clear, actionable reason
+  // (this is what the user sees when the "Remind Me" / access-code buttons fail).
+  const NOT_CONFIGURED_MSG =
+    "Email delivery isn't configured yet. Set RESEND_API_KEY (and a verified EMAIL_FROM " +
+    "domain) — or SMTP_HOST/SMTP_USER/SMTP_PASS — to enable emails.";
+
+  // 3) Local-dev only: render a preview via Ethereal so developers can see the email
+  // without a real provider. Never attempted in production (it needs outbound access
+  // to api.nodemailer.com and doesn't actually deliver — it would just surface a
+  // confusing error to real users).
+  if (process.env.NODE_ENV !== "production") {
+    try {
+      const testAccount = await nodemailer.createTestAccount();
+      const transporter = nodemailer.createTransport({
+        host: "smtp.ethereal.email",
+        port: 587,
+        secure: false,
+        auth: { user: testAccount.user, pass: testAccount.pass },
+      });
+      const info = await transporter.sendMail({
+        from: EMAIL_FROM,
+        to: msg.to,
+        subject: msg.subject,
+        html: msg.html,
+        text: msg.text,
+      });
+      const previewUrl = nodemailer.getTestMessageUrl(info) || undefined;
+      console.log(`[Email/Ethereal] Preview-only send to ${msg.to} → ${previewUrl}`);
+      return { delivered: false, provider: "ethereal", previewUrl, error: NOT_CONFIGURED_MSG };
+    } catch (err: any) {
+      console.error("[Email/Ethereal] Threw:", err);
+      // Fall through to the generic not-configured response below.
+    }
   }
+
+  console.error(`[Email] No provider configured — cannot deliver to ${msg.to}.`);
+  return { delivered: false, provider: "console", error: NOT_CONFIGURED_MSG };
 }
 
 const FALLBACK_QUOTES: Record<string, { name: string; price: number; change_24h: number; volume: number; market_cap: number; high: number; low: number }> = {
@@ -1365,16 +1376,10 @@ To unsubscribe, go to ${unsubscribeUrl}`;
         html: emailHtml,
       });
 
-      if (!sendResult.delivered) {
-        return res.status(502).json({
-          error: sendResult.error || "Failed to deliver the welcome email.",
-          previewUrl: sendResult.previewUrl,
-        });
-      }
-      console.log(`[Clock Subscription] Email successfully sent to ${email} (via ${sendResult.provider})`);
-
-      // Only persist the subscription once the welcome email is actually delivered,
-      // so a failed send doesn't leave us with a subscriber who never saw a welcome.
+      // Register the subscriber regardless of whether the welcome email went out —
+      // they asked to be reminded, and the weekly scheduler will email them once
+      // delivery is configured. We just report `emailSent` honestly so the client
+      // never claims an email was sent when it wasn't.
       const subscribers = getSubscribers();
       if (!subscribers.includes(email)) {
         subscribers.push(email);
@@ -1382,11 +1387,19 @@ To unsubscribe, go to ${unsubscribeUrl}`;
         console.log(`[Clock Subscription] Saved new subscriber to file: ${email}`);
       }
 
-      res.json({
-        success: true,
-        message: "Welcome email sent successfully.",
-        previewUrl: sendResult.previewUrl,
-      });
+      if (sendResult.delivered) {
+        console.log(`[Clock Subscription] Welcome email sent to ${email} (via ${sendResult.provider})`);
+        res.json({ success: true, emailSent: true, message: "Welcome email sent successfully." });
+      } else {
+        console.warn(`[Clock Subscription] Subscribed ${email} but welcome email was not sent: ${sendResult.error}`);
+        res.json({
+          success: true,
+          emailSent: false,
+          message: "You're subscribed. We couldn't send a welcome email right now.",
+          warning: sendResult.error,
+          previewUrl: sendResult.previewUrl,
+        });
+      }
 
     } catch (error: any) {
       console.error("[Clock Subscription Error]:", error);
