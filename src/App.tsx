@@ -25,7 +25,7 @@ import {
   Gauge,
   Zap
 } from 'lucide-react';
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -38,19 +38,28 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 
 import Chart from './components/Chart';
-import Snapshots, { SnapshotData } from './components/Snapshots';
-import AIChat from './components/AIChat';
-import PerpsTrading from './components/PerpsTrading';
 import FullPortTimer from './components/FullPortTimer';
-import StrategyBuilder from './components/StrategyBuilder';
-import CycleMonitor from './components/CycleMonitor';
 import ProfileModal from './components/ProfileModal';
-import SmartContractPayment from './components/SmartContractPayment';
 import WalletDetailsModal from './components/WalletDetailsModal';
 import MarketTicker from './components/MarketTicker';
+import type { SnapshotData } from './components/Snapshots';
+// Heavy, conditionally-rendered views are code-split so the initial load stays light.
+const Snapshots = lazy(() => import('./components/Snapshots'));
+const AIChat = lazy(() => import('./components/AIChat'));
+const PerpsTrading = lazy(() => import('./components/PerpsTrading'));
+const StrategyBuilder = lazy(() => import('./components/StrategyBuilder'));
+const CycleMonitor = lazy(() => import('./components/CycleMonitor'));
+const SmartContractPayment = lazy(() => import('./components/SmartContractPayment'));
 import { TIMEFRAME_ANALYSIS } from './data/timeframeAnalysis';
 import { PRO_SIGNALS, PERP_ASSETS } from './data/perpsAndSignals';
 import { SEARCHABLE_MARKETS, MarketAsset } from './data/markets';
+
+// Fallback shown while a code-split view/modal chunk is loading.
+const TabLoader = () => (
+  <div className="flex items-center justify-center py-24 text-muted-foreground">
+    <Loader2 className="w-6 h-6 animate-spin text-primary" />
+  </div>
+);
 
 const TIMEFRAMES = [
   { id: '60', label: '1H', desc: 'Hourly Scalp' },
@@ -139,9 +148,15 @@ export default function App() {
     return parseInt(saved, 10);
   });
 
+  const getResetDateString = () => {
+    const now = new Date();
+    const shifted = new Date(now.getTime() - 20 * 60 * 60 * 1000);
+    return shifted.toDateString();
+  };
+
   const [dailySearchCount, setDailySearchCount] = useState<number>(() => {
     const savedDate = localStorage.getItem('swarm_search_date');
-    const today = new Date().toDateString();
+    const today = getResetDateString();
     if (savedDate !== today) {
       localStorage.setItem('swarm_search_date', today);
       localStorage.setItem('swarm_search_count', '0');
@@ -152,7 +167,7 @@ export default function App() {
 
   const [dailyChatCount, setDailyChatCount] = useState<number>(() => {
     const savedDate = localStorage.getItem('swarm_chat_date');
-    const today = new Date().toDateString();
+    const today = getResetDateString();
     if (savedDate !== today) {
       localStorage.setItem('swarm_chat_date', today);
       localStorage.setItem('swarm_chat_count', '0');
@@ -220,6 +235,33 @@ export default function App() {
     return () => clearInterval(interval);
   }, [userTier, expiry]);
 
+  // On load, refresh the paid entitlement from the server so tier/tokens are
+  // authoritative (localStorage alone can't grant a paid tier). Also restores
+  // the plan after switching devices once the email claim token is present.
+  useEffect(() => {
+    const email = localStorage.getItem('swarm_entitlement_email');
+    const token = localStorage.getItem('swarm_entitlement_token');
+    if (!email || !token) return;
+    fetch(`/api/entitlements/me?email=${encodeURIComponent(email)}`, {
+      headers: { 'x-entitlement-token': token },
+    })
+      .then(r => (r.ok ? r.json() : null))
+      .then(data => {
+        const ent = data?.entitlement;
+        if (!ent) return;
+        const active = ent.tierExpiry && ent.tierExpiry > Date.now();
+        const tier = active ? ent.tier : 'free';
+        setUserTier(tier);
+        localStorage.setItem('swarm_user_tier', tier);
+        if (ent.tierExpiry) localStorage.setItem('swarm_membership_expiry', String(ent.tierExpiry));
+        // NOTE: analysis tokens are a client-side spendable balance (see below).
+        // We deliberately do NOT sync them from the server here — ent.tokens is the
+        // lifetime-purchased total, and overwriting the local remaining balance on
+        // every load would refill spent tokens for free on each refresh.
+      })
+      .catch(() => { /* offline / not reachable — keep local state */ });
+  }, []);
+
   // 1W Projection Modal States
   const [projectionAsset, setProjectionAsset] = useState<MarketAsset | null>(null);
   const [isProjectionLoading, setIsProjectionLoading] = useState(false);
@@ -237,7 +279,7 @@ export default function App() {
   // API Pulls State Tracking
   const [dailyApiCount, setDailyApiCount] = useState<number>(() => {
     const savedDate = localStorage.getItem('swarm_api_date');
-    const today = new Date().toDateString();
+    const today = getResetDateString();
     if (savedDate !== today) {
       localStorage.setItem('swarm_api_date', today);
       localStorage.setItem('swarm_api_count', '0');
@@ -254,6 +296,12 @@ export default function App() {
   };
 
   const handleLoginRecalculation = async () => {
+    const apiLimit = TIER_LIMITS[userTier].maxApiRequests;
+    if (dailyApiCount >= apiLimit) {
+      setToastMessage(`You have reached your daily limit of synchronization (${apiLimit} requests) for the ${TIER_LIMITS[userTier].label}. Upgrade to unlock higher allowances.`);
+      return;
+    }
+
     setIsRecalculating(true);
     setRecalcStep('Initializing secure swarm session...');
     
@@ -335,7 +383,7 @@ export default function App() {
   };
 
   const incrementSearchCount = () => {
-    const today = new Date().toDateString();
+    const today = getResetDateString();
     localStorage.setItem('swarm_search_date', today);
     const newCount = dailySearchCount + 1;
     setDailySearchCount(newCount);
@@ -343,7 +391,7 @@ export default function App() {
   };
 
   const incrementChatCount = () => {
-    const today = new Date().toDateString();
+    const today = getResetDateString();
     localStorage.setItem('swarm_chat_date', today);
     const newCount = dailyChatCount + 1;
     setDailyChatCount(newCount);
@@ -381,7 +429,7 @@ export default function App() {
     // GUARD: Check API Limits before pulling
     const apiLimit = TIER_LIMITS[userTier].maxApiRequests;
     if (dailyApiCount >= apiLimit) {
-      setToastMessage(`Daily API limit exceeded (${dailyApiCount}/${apiLimit} pulls) for your ${TIER_LIMITS[userTier].label}. Upgrade to unlock higher allowances.`);
+      setToastMessage(`You have reached your daily limit of synchronization (${apiLimit} requests) for the ${TIER_LIMITS[userTier].label}. Upgrade to unlock higher allowances.`);
       return;
     }
 
@@ -481,7 +529,7 @@ Establish position in the current accumulation range with a stop loss below **$$
       // GUARD: Check API Limits before pulling
       const apiLimit = TIER_LIMITS[userTier].maxApiRequests;
       if (dailyApiCount >= apiLimit) {
-        setToastMessage(`Daily API limit exceeded (${dailyApiCount}/${apiLimit} pulls) for your ${TIER_LIMITS[userTier].label}. Upgrade to unlock higher allowances.`);
+        setToastMessage(`You have reached your daily limit of synchronization (${apiLimit} requests) for the ${TIER_LIMITS[userTier].label}. Upgrade to unlock higher allowances.`);
         return;
       }
 
@@ -808,6 +856,15 @@ Establish position in the current accumulation range with a stop loss below **$$
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-400 via-amber-500 to-yellow-500 font-bold">Cycle Monitor</span>
               <Badge variant="outline" className="ml-auto border-orange-500/30 text-orange-400 text-[8px] font-mono font-bold">ENGINE</Badge>
             </Button>
+            <Button 
+              variant="ghost"
+              className="w-full justify-start text-muted-foreground hover:text-foreground"
+              onClick={handleLoginRecalculation}
+              disabled={isRecalculating}
+            >
+              <RefreshCw className={`mr-2 h-4 w-4 ${isRecalculating ? 'animate-spin text-primary' : 'text-primary'}`} />
+              Sync & Recalc AI
+            </Button>
 
             {/* Membership Status Section */}
             <div className="mt-4 pt-4 border-t border-border/40 px-1 space-y-3">
@@ -948,12 +1005,7 @@ Establish position in the current accumulation range with a stop loss below **$$
           </div>
           
           <div className="flex items-center gap-2 md:gap-4">
-            <Button variant="outline" size="sm" onClick={handleLoginRecalculation} disabled={isRecalculating} className="border-border hover:bg-muted text-muted-foreground h-8 px-2.5 sm:px-3 text-xs flex items-center gap-1.5 cursor-pointer font-mono font-medium">
-              <RefreshCw className={`w-3.5 h-3.5 ${isRecalculating ? 'animate-spin text-primary' : ''}`} />
-              <span className="hidden sm:inline">Sync & Recalc AI</span>
-              <span className="sm:hidden">Recalc</span>
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => { setSubscriptionTriggerReason('upgrade'); setIsSubscriptionModalOpen(true); }} className="border-amber-500 hover:bg-amber-500/10 text-amber-500 h-8 px-2.5 sm:px-3 text-xs flex items-center gap-1.5 cursor-pointer font-bold transition-all shadow-sm shadow-amber-500/10">
+            <Button variant="outline" size="sm" onClick={() => { setSubscriptionTriggerReason('upgrade'); setIsSubscriptionModalOpen(true); }} className="border-amber-500 hover:bg-amber-500/10 text-amber-500 h-8 px-2.5 sm:px-3 text-xs hidden sm:flex items-center gap-1.5 cursor-pointer font-bold transition-all shadow-sm shadow-amber-500/10">
               <Sparkles className="w-3.5 h-3.5 text-amber-500 animate-pulse" />
               <span>Upgrade</span>
             </Button>
@@ -996,7 +1048,7 @@ Establish position in the current accumulation range with a stop loss below **$$
         <div className="flex-1 flex overflow-hidden relative">
           <ScrollArea className="flex-1 p-4 md:p-6 bg-background">
             <div className="max-w-7xl mx-auto space-y-6 pb-24 md:pb-6">
-              
+              <Suspense fallback={<TabLoader />}>
               {activeTab === 'dashboard' ? (
                 <>
                   {/* Full Port back into Crypto Countdown Timer */}
@@ -1629,6 +1681,7 @@ Can you perform an advanced confirmation analyze of this recommendation using co
                   userTier={userTier}
                 />
               )}
+              </Suspense>
             </div>
           </ScrollArea>
           
@@ -1684,7 +1737,8 @@ Can you perform an advanced confirmation analyze of this recommendation using co
           {/* AI Chat Floating Box - Fully Responsive and Safe on Mobile */}
           {isChatOpen && (
             <div className="fixed bottom-20 md:bottom-4 right-3 left-3 sm:left-auto sm:right-4 w-auto sm:w-[360px] md:w-[400px] h-[520px] md:h-[600px] max-h-[75vh] md:max-h-[85vh] z-50 flex flex-col shadow-2xl rounded-2xl overflow-hidden border border-border bg-background">
-              <AIChat 
+              <Suspense fallback={<TabLoader />}>
+              <AIChat
                 selectedSnapshot={selectedSnapshot} 
                 onClearSnapshot={() => setSelectedSnapshot(null)} 
                 onClose={() => setIsChatOpen(false)}
@@ -1711,6 +1765,7 @@ Can you perform an advanced confirmation analyze of this recommendation using co
                   });
                 }}
               />
+              </Suspense>
             </div>
           )}
 
@@ -2179,83 +2234,67 @@ What are the critical price milestones and exact validation triggers we should m
 
           {/* Smart Contract Web3 Payment Modal */}
           {activePurchaseProduct && (
+            <Suspense fallback={<TabLoader />}>
             <SmartContractPayment
               isOpen={!!activePurchaseProduct}
               onClose={() => setActivePurchaseProduct(null)}
-              tier={activePurchaseProduct.id}
+              productId={activePurchaseProduct.id}
               price={activePurchaseProduct.price}
               packName={activePurchaseProduct.name}
-              walletAddress={walletAddress}
-              onConnectWallet={() => {
-                setActivePurchaseProduct(null);
-                setIsProfileModalOpen(true);
-              }}
-              usdcBalance={usdcBalance}
-              setUsdcBalance={(newBal) => {
-                setUsdcBalance(newBal);
-                localStorage.setItem('swarm_wallet_usdc', newBal.toString());
-              }}
-              solBalance={solBalance}
-              setSolBalance={(newBal) => {
-                setSolBalance(newBal);
-                localStorage.setItem('swarm_wallet_sol', newBal.toString());
-              }}
-              onSuccess={() => {
-                // If it is a premium tier pack:
-                if (['basic', 'pro', 'ultimate'].includes(activePurchaseProduct.id)) {
-                  const targetTier = activePurchaseProduct.id as 'basic' | 'pro' | 'ultimate';
-                  setUserTier(targetTier);
-                  localStorage.setItem('swarm_user_tier', targetTier);
+              defaultEmail={profileEmail || undefined}
+              onSuccess={(result) => {
+                const ent = result.entitlement;
 
-                  // Calculate and store membership expiration
-                  const daysToAdd = activePurchaseProduct.id === 'ultimate' ? 360 : activePurchaseProduct.id === 'pro' ? 120 : 30;
-                  const newExpiry = Date.now() + daysToAdd * 24 * 60 * 60 * 1000;
-                  localStorage.setItem('swarm_membership_expiry', newExpiry.toString());
+                // Persist the email + claim token so the plan can be restored on any device.
+                localStorage.setItem('swarm_entitlement_email', result.email);
+                localStorage.setItem('swarm_entitlement_token', result.claimToken);
+
+                if (ent) {
+                  // The server is authoritative for tier / expiry / tokens.
+                  if (ent.tier && ent.tier !== 'free') {
+                    setUserTier(ent.tier);
+                    localStorage.setItem('swarm_user_tier', ent.tier);
+                  }
+                  if (ent.tierExpiry) {
+                    localStorage.setItem('swarm_membership_expiry', String(ent.tierExpiry));
+                  }
+
+                  // Credit the tokens from THIS purchase onto the local spendable
+                  // balance (additive). We use the purchased product's token count
+                  // rather than ent.tokens (the server's lifetime total), so a user
+                  // who had already spent tokens isn't reset to the cumulative total.
+                  if (activePurchaseProduct.tokens) {
+                    setAnalysisTokens(prev => {
+                      const next = prev + activePurchaseProduct.tokens;
+                      localStorage.setItem('lion_analysis_tokens', String(next));
+                      return next;
+                    });
+                  }
+
+                  // Reflect the server-recorded receipt in the local ledger for display.
+                  const latest = ent.receipts && ent.receipts[0];
+                  if (latest) {
+                    const newReceipt = {
+                      id: `RCPT-${Math.floor(100000 + Math.random() * 900000)}`,
+                      tier: latest.productId,
+                      price: latest.amountUsd,
+                      billingCycle: latest.name,
+                      date: latest.date,
+                      txHash: latest.txSignature,
+                      status: 'Paid'
+                    };
+                    const updatedReceipts = [newReceipt, ...receipts];
+                    setReceipts(updatedReceipts);
+                    localStorage.setItem('swarm_receipts', JSON.stringify(updatedReceipts));
+                  }
                 }
 
-                // Credit the purchased analysis tokens
-                const addedTokens = activePurchaseProduct.tokens;
-                setAnalysisTokens(prev => {
-                  const next = prev + addedTokens;
-                  localStorage.setItem('lion_analysis_tokens', next.toString());
-                  return next;
-                });
-
-                // Generate and save subscription receipt
-                const newReceipt = {
-                  id: `RCPT-${Math.floor(100000 + Math.random() * 900000)}`,
-                  tier: activePurchaseProduct.id,
-                  price: activePurchaseProduct.price,
-                  billingCycle: activePurchaseProduct.tokens > 0 ? `+${activePurchaseProduct.tokens} Tokens` : 'Refill',
-                  date: Date.now(),
-                  txHash: `SOL-${Math.floor(Math.random() * 100000000).toString(16).toUpperCase()}`,
-                  status: 'Paid'
-                };
-                const updatedReceipts = [newReceipt, ...receipts];
-                setReceipts(updatedReceipts);
-                localStorage.setItem('swarm_receipts', JSON.stringify(updatedReceipts));
-                
-                // If they have email saved, automatically backup/sync as well
-                if (profileEmail) {
-                  const profileData = {
-                    username,
-                    avatarUrl,
-                    email: profileEmail,
-                    walletAddress,
-                    connectedBlockchain,
-                    walletType,
-                    snapshotsCount: receipts.length, // approximation or loaded
-                    receipts: updatedReceipts,
-                    updatedAt: Date.now()
-                  };
-                  localStorage.setItem('swarm_profile_data_' + profileEmail, JSON.stringify(profileData));
-                }
-
-                setToastMessage(`Success! Purchased ${activePurchaseProduct.name} successfully.`);
+                setToastMessage(`Success! ${activePurchaseProduct.name} is now active.`);
                 setActivePurchaseProduct(null);
                 setIsSubscriptionModalOpen(false);
               }}
             />
+            </Suspense>
           )}
 
           {/* Live Recalculating overlay backdrop screen */}

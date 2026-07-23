@@ -13,8 +13,41 @@ interface MarketMoversData {
   top10Losers: TickerItem[];
 }
 
+const DEFAULT_MARKET_MOVERS: MarketMoversData = {
+  top10MarketCap: [
+    { symbol: 'BTC', price: 91450, change24h: 3.42 },
+    { symbol: 'ETH', price: 3340, change24h: 2.18 },
+    { symbol: 'SOL', price: 188.50, change24h: 5.61 },
+    { symbol: 'BNB', price: 645.20, change24h: 1.15 },
+    { symbol: 'XRP', price: 2.45, change24h: 8.90 },
+    { symbol: 'DOGE', price: 0.38, change24h: -1.25 },
+    { symbol: 'ADA', price: 0.82, change24h: 4.10 },
+    { symbol: 'AVAX', price: 34.10, change24h: 6.80 },
+    { symbol: 'LINK', price: 18.20, change24h: 0.95 },
+    { symbol: 'SUI', price: 3.15, change24h: 12.40 }
+  ],
+  top10Gainers: [
+    { symbol: 'SUI', price: 3.15, change24h: 12.40 },
+    { symbol: 'XRP', price: 2.45, change24h: 8.90 },
+    { symbol: 'AVAX', price: 34.10, change24h: 6.80 },
+    { symbol: 'SOL', price: 188.50, change24h: 5.61 },
+    { symbol: 'ADA', price: 0.82, change24h: 4.10 },
+    { symbol: 'BTC', price: 91450, change24h: 3.42 },
+    { symbol: 'ETH', price: 3340, change24h: 2.18 },
+    { symbol: 'BNB', price: 645.20, change24h: 1.15 },
+    { symbol: 'LINK', price: 18.20, change24h: 0.95 },
+    { symbol: 'NEAR', price: 6.70, change24h: 0.80 }
+  ],
+  top10Losers: [
+    { symbol: 'PEPE', price: 0.000019, change24h: -2.80 },
+    { symbol: 'DOGE', price: 0.38, change24h: -1.25 },
+    { symbol: 'SHIB', price: 0.000024, change24h: -0.90 },
+    { symbol: 'APT', price: 11.20, change24h: -0.45 }
+  ]
+};
+
 export default function MarketTicker() {
-  const [data, setData] = useState<MarketMoversData | null>(null);
+  const [data, setData] = useState<MarketMoversData>(DEFAULT_MARKET_MOVERS);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -22,7 +55,9 @@ export default function MarketTicker() {
         const response = await fetch('/api/coingecko/market-movers');
         if (response.ok) {
           const result = await response.json();
-          setData(result);
+          if (result && result.top10MarketCap && result.top10MarketCap.length > 0) {
+            setData(result);
+          }
         }
       } catch (error) {
         console.error("Failed to fetch market movers:", error);
@@ -34,8 +69,6 @@ export default function MarketTicker() {
     const interval = setInterval(fetchData, 5 * 60 * 1000);
     return () => clearInterval(interval);
   }, []);
-
-  if (!data) return null;
 
   const renderTickerItems = (items: TickerItem[], icon: React.ReactNode, label: string) => (
     <div className="flex items-center gap-6 px-4">
