@@ -68,6 +68,15 @@ export default function CycleMonitor() {
   const [wsConnected, setWsConnected] = useState<boolean>(false);
   const wsRef = React.useRef<WebSocket | null>(null);
 
+  // Simulation mode: once the user drags a pillar or sets the BTC price, their
+  // changes are local to this session and the incoming live stream stops
+  // overwriting them. "Reset to baseline" resumes the live feed. A ref mirrors
+  // the flag so the (mount-only) WebSocket onmessage closure reads the latest value.
+  const [liveMode, setLiveMode] = useState<boolean>(true);
+  const liveModeRef = React.useRef(true);
+  const enterSimulation = () => { liveModeRef.current = false; setLiveMode(false); };
+  const resumeLiveMode = () => { liveModeRef.current = true; setLiveMode(true); };
+
   // Set up WebSocket listener
   useEffect(() => {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -87,10 +96,12 @@ export default function CycleMonitor() {
         try {
           const parsed = JSON.parse(event.data);
           if (parsed.type === "live-update" && parsed.data) {
+            // In simulation mode the user's local overrides win — ignore the feed.
+            if (!liveModeRef.current) return;
             const { btcPrice, ethBtcRatio, pillars: remotePillars } = parsed.data.cycleMonitor;
             setCurrentBtcPrice(Math.round(btcPrice));
             setEthBtcRatio(parseFloat(ethBtcRatio.toFixed(4)));
-            
+
             setPillars(prev => prev.map(localPillar => {
               const remoteMatch = remotePillars.find((rp: any) => rp.id === localPillar.id);
               if (remoteMatch) {
@@ -188,23 +199,15 @@ export default function CycleMonitor() {
   const isAltRotationProhibited = ethBtcRatio < 0.035;
 
   const handlePillarScoreChange = (id: string, newScore: number) => {
+    // Local, session-only what-if edit — do not broadcast to other clients.
+    enterSimulation();
     setPillars(prev => prev.map(p => p.id === id ? { ...p, currentScore: Math.max(0, Math.min(100, newScore)) } : p));
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({
-        type: "set-pillar",
-        data: { id, score: newScore }
-      }));
-    }
   };
 
   const handleBtcPriceChange = (val: number) => {
+    // Local, session-only what-if edit — do not broadcast to other clients.
+    enterSimulation();
     setCurrentBtcPrice(val);
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({
-        type: "set-btc-price",
-        data: { price: val }
-      }));
-    }
   };
 
   const handleResetPillars = () => {
@@ -212,15 +215,10 @@ export default function CycleMonitor() {
     setCurrentBtcPrice(65296);
     setEthBtcRatio(0.029);
     setErrorMessage(null);
-    setSuccessMessage("Pillar scores reset to baseline configuration!");
+    setSuccessMessage("Pillar scores reset to baseline. Resuming live data feed.");
     setTimeout(() => setSuccessMessage(null), 3000);
-
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({
-        type: "set-btc-price",
-        data: { price: 65296 }
-      }));
-    }
+    // Return to live mode so the stream drives the values again.
+    resumeLiveMode();
   };
 
   const triggerSuccess = (msg: string) => {
@@ -326,6 +324,11 @@ Steady accumulation in systematic intervals remains the high-confluence playbook
             <Badge className={`${wsConnected ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-rose-500/10 text-rose-400 border-rose-500/20'} border font-mono text-[9px] uppercase font-bold px-2 py-0.5 shrink-0`}>
               {wsConnected ? '● WS Live' : '○ WS Offline'}
             </Badge>
+            {!liveMode && (
+              <Badge className="bg-amber-500/10 text-amber-400 border-amber-500/20 border font-mono text-[9px] uppercase font-bold px-2 py-0.5 shrink-0">
+                ◆ Simulation — reset to resume live
+              </Badge>
+            )}
           </div>
           <p className="text-xs text-muted-foreground mt-1 max-w-2xl leading-normal font-sans">
             Cyclical risk engine tracking normalized macro coordinates and deployment tranches. Anchored to the visual ground truth metrics of the 11 Core Pillars.
