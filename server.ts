@@ -42,11 +42,23 @@ const PRODUCTS: Record<ProductId, Product> = {
 const USDC_MINT = process.env.SOLANA_USDC_MINT || "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 const SOLANA_RPC_URL = process.env.SOLANA_RPC_URL || "https://api.mainnet-beta.solana.com";
 const SOLANA_RECIPIENT_WALLET = process.env.SOLANA_RECIPIENT_WALLET || "";
-// USDC has 6 decimals.
-const USDC_DECIMALS = 6;
 
-// Secret used to sign entitlement claim tokens (HMAC). Falls back to ADMIN_API_KEY.
-const ENTITLEMENT_SECRET = process.env.ENTITLEMENT_SECRET || process.env.ADMIN_API_KEY || "";
+// Secret used to sign entitlement claim tokens (HMAC). Prefer an explicit env var;
+// fall back to ADMIN_API_KEY; and if neither is set, generate a random per-process
+// secret so claim tokens can never be forged. (A random secret means tokens don't
+// survive a server restart — acceptable, since the JSON entitlement store is itself
+// ephemeral — and users can re-unlock via the email code flow.)
+const ENTITLEMENT_SECRET =
+  process.env.ENTITLEMENT_SECRET ||
+  process.env.ADMIN_API_KEY ||
+  crypto.randomBytes(32).toString("hex");
+if (!process.env.ENTITLEMENT_SECRET && !process.env.ADMIN_API_KEY) {
+  console.warn(
+    "[Entitlements] Neither ENTITLEMENT_SECRET nor ADMIN_API_KEY is set — using a " +
+    "random per-process secret. Claim tokens will be invalidated on restart. Set " +
+    "ENTITLEMENT_SECRET in production for stable, secure entitlement claims."
+  );
+}
 
 // Sender identity for all outbound mail. The domain must be verified with the
 // configured delivery provider (Resend / SMTP) or the message will be rejected.
@@ -1568,8 +1580,9 @@ To unsubscribe, go to ${unsubscribeUrl}`;
   const saveEntitlements = (e: Record<string, Entitlement>) => writeJsonFile(ENTITLEMENTS_FILE, e);
 
   // HMAC claim token binds an email to its entitlement without a login system.
+  // ENTITLEMENT_SECRET is always non-empty (random per-process fallback at boot).
   function signClaim(email: string): string {
-    return crypto.createHmac("sha256", ENTITLEMENT_SECRET || "insecure-dev-secret")
+    return crypto.createHmac("sha256", ENTITLEMENT_SECRET)
       .update(email.toLowerCase()).digest("hex");
   }
   function verifyClaim(email: string, token: string): boolean {
@@ -1717,17 +1730,30 @@ To unsubscribe, go to ${unsubscribeUrl}`;
         { commitment: "confirmed" }
       );
 
-      // Mark confirmed + grant entitlement.
-      payment.status = "confirmed";
-      payment.confirmedAt = Date.now();
-      payment.txSignature = signatureInfo.signature;
-      savePayments(payments);
+      // Confirm + grant inside a single SYNCHRONOUS block (re-read the store, re-check
+      // status, mark confirmed, grant). Because there is no `await` between the re-check
+      // and the write, Node's event loop runs it atomically, so two concurrent verifies
+      // of the same reference (which both passed the earlier pending check before the
+      // awaited RPC calls) cannot both grant — the second one now sees "confirmed".
+      const freshPayments = getPayments();
+      const fresh = freshPayments.find(p => p.reference === reference);
+      if (!fresh) {
+        return res.status(404).json({ error: "Unknown payment reference" });
+      }
+      if (fresh.status === "confirmed") {
+        const ent = getEntitlements()[fresh.email];
+        return res.json({ status: "confirmed", entitlement: ent, claimToken: signClaim(fresh.email) });
+      }
+      fresh.status = "confirmed";
+      fresh.confirmedAt = Date.now();
+      fresh.txSignature = signatureInfo.signature;
+      savePayments(freshPayments);
 
-      const product = PRODUCTS[payment.productId];
-      const entitlement = grantProduct(payment.email, product, payment.productId, signatureInfo.signature);
-      console.log(`[Payments] Confirmed ${payment.productId} for ${payment.email} (tx ${signatureInfo.signature})`);
+      const product = PRODUCTS[fresh.productId];
+      const entitlement = grantProduct(fresh.email, product, fresh.productId, signatureInfo.signature);
+      console.log(`[Payments] Confirmed ${fresh.productId} for ${fresh.email} (tx ${signatureInfo.signature})`);
 
-      res.json({ status: "confirmed", entitlement, claimToken: signClaim(payment.email) });
+      res.json({ status: "confirmed", entitlement, claimToken: signClaim(fresh.email) });
     } catch (error: any) {
       // validateTransfer throws if the on-chain transfer doesn't match — treat as not-yet-valid.
       console.warn("[Payments/verify] Not yet valid:", error?.message || error);
@@ -1736,37 +1762,51 @@ To unsubscribe, go to ${unsubscribeUrl}`;
   });
 
   // ---- Email-based entitlement claim (unlock on any device) --------------
+  const CODE_TTL_MS = 10 * 60 * 1000;
+  const CODE_RESEND_COOLDOWN_MS = 60 * 1000;
+
   app.post("/api/entitlements/request-code", async (req, res) => {
     try {
       const { email } = req.body || {};
       if (!isValidEmail(email)) return res.status(400).json({ error: "A valid email address is required" });
       const key = email.toLowerCase();
 
-      // Only issue a code if there's actually an entitlement to claim.
+      const codes = readJsonFile<Record<string, { codeHash: string; expiresAt: number; attempts: number; createdAt: number }>>(ENT_CODES_FILE, {});
+
+      // Resend cooldown: if a still-valid code was issued in the last minute, don't
+      // overwrite it (which would reset the attempt counter) or send another email.
+      const existing = codes[key];
+      if (existing && existing.expiresAt > Date.now() && Date.now() - existing.createdAt < CODE_RESEND_COOLDOWN_MS) {
+        return res.status(429).json({ error: "A code was just sent. Please wait a minute before requesting another." });
+      }
+
+      // Only actually issue+send a code when an entitlement exists, but ALWAYS return the
+      // same generic success (password-reset style) so responses don't reveal which
+      // emails hold entitlements. Delivery failures are logged, not surfaced (the user
+      // can retry after the cooldown).
       const ent = getEntitlements()[key];
-      if (!ent) {
-        return res.status(404).json({ error: "No entitlement found for this email." });
+      if (ent) {
+        const code = String(crypto.randomInt(100000, 1000000));
+        codes[key] = {
+          codeHash: crypto.createHash("sha256").update(code).digest("hex"),
+          expiresAt: Date.now() + CODE_TTL_MS,
+          attempts: 0,
+          createdAt: Date.now(),
+        };
+        writeJsonFile(ENT_CODES_FILE, codes);
+
+        const result = await sendEmail({
+          to: key,
+          subject: "🦁 Your Lion Scanner access code",
+          text: `Your Lion Scanner verification code is ${code}. It expires in 10 minutes.`,
+          html: `<p>Your Lion Scanner verification code is <strong style="font-size:20px;letter-spacing:2px;">${code}</strong>.</p><p>It expires in 10 minutes.</p>`,
+        });
+        if (!result.delivered) {
+          console.error(`[Entitlements/request-code] Delivery failed for ${key}: ${result.error || "unknown"}`);
+        }
       }
 
-      const code = String(Math.floor(100000 + Math.random() * 900000));
-      const codes = readJsonFile<Record<string, { codeHash: string; expiresAt: number; attempts: number }>>(ENT_CODES_FILE, {});
-      codes[key] = {
-        codeHash: crypto.createHash("sha256").update(code).digest("hex"),
-        expiresAt: Date.now() + 10 * 60 * 1000,
-        attempts: 0,
-      };
-      writeJsonFile(ENT_CODES_FILE, codes);
-
-      const result = await sendEmail({
-        to: key,
-        subject: "🦁 Your Lion Scanner access code",
-        text: `Your Lion Scanner verification code is ${code}. It expires in 10 minutes.`,
-        html: `<p>Your Lion Scanner verification code is <strong style="font-size:20px;letter-spacing:2px;">${code}</strong>.</p><p>It expires in 10 minutes.</p>`,
-      });
-      if (!result.delivered) {
-        return res.status(502).json({ error: result.error || "Failed to send verification code." });
-      }
-      res.json({ success: true });
+      res.json({ success: true, message: "If that email has an active plan, we've sent a verification code." });
     } catch (error: any) {
       console.error("[Entitlements/request-code] Error:", error);
       res.status(500).json({ error: error.message || "Failed to send code" });

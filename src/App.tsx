@@ -254,10 +254,10 @@ export default function App() {
         setUserTier(tier);
         localStorage.setItem('swarm_user_tier', tier);
         if (ent.tierExpiry) localStorage.setItem('swarm_membership_expiry', String(ent.tierExpiry));
-        if (typeof ent.tokens === 'number') {
-          setAnalysisTokens(ent.tokens);
-          localStorage.setItem('lion_analysis_tokens', String(ent.tokens));
-        }
+        // NOTE: analysis tokens are a client-side spendable balance (see below).
+        // We deliberately do NOT sync them from the server here — ent.tokens is the
+        // lifetime-purchased total, and overwriting the local remaining balance on
+        // every load would refill spent tokens for free on each refresh.
       })
       .catch(() => { /* offline / not reachable — keep local state */ });
   }, []);
@@ -2258,9 +2258,17 @@ What are the critical price milestones and exact validation triggers we should m
                   if (ent.tierExpiry) {
                     localStorage.setItem('swarm_membership_expiry', String(ent.tierExpiry));
                   }
-                  if (typeof ent.tokens === 'number') {
-                    setAnalysisTokens(ent.tokens);
-                    localStorage.setItem('lion_analysis_tokens', String(ent.tokens));
+
+                  // Credit the tokens from THIS purchase onto the local spendable
+                  // balance (additive). We use the purchased product's token count
+                  // rather than ent.tokens (the server's lifetime total), so a user
+                  // who had already spent tokens isn't reset to the cumulative total.
+                  if (activePurchaseProduct.tokens) {
+                    setAnalysisTokens(prev => {
+                      const next = prev + activePurchaseProduct.tokens;
+                      localStorage.setItem('lion_analysis_tokens', String(next));
+                      return next;
+                    });
                   }
 
                   // Reflect the server-recorded receipt in the local ledger for display.
