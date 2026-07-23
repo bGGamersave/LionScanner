@@ -115,7 +115,14 @@ export default function FullPortTimer() {
         setSubscribedEmails(updated);
         localStorage.setItem('swarm_weekly_reminders', JSON.stringify(updated));
         setStatus('success');
-        setErrorMessage(isReplacement ? 'Your active subscription email has been updated. A welcome confirmation has been sent!' : 'A welcome confirmation email has been sent!');
+        if (data.alreadySubscribed) {
+          setErrorMessage('This email is already subscribed to weekly reminders.');
+        } else if (data.emailSent === false) {
+          // Honest: they're subscribed, but the welcome email could not be delivered.
+          setErrorMessage("You're subscribed! We couldn't send the welcome email right now, but you'll get your weekly reminders. (Email delivery isn't fully configured yet.)");
+        } else {
+          setErrorMessage(isReplacement ? 'Your active subscription email has been updated. A welcome confirmation has been sent!' : 'A welcome confirmation email has been sent!');
+        }
         if (data.previewUrl) {
           setPreviewUrl(data.previewUrl);
         }
