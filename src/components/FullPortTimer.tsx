@@ -108,32 +108,30 @@ export default function FullPortTimer() {
     .then(async (response) => {
       const isReplacement = subscribedEmails.length > 0 && !subscribedEmails.includes(email.toLowerCase());
       const updated = [email.toLowerCase()]; // Keep at most 1 email address
-      setSubscribedEmails(updated);
-      localStorage.setItem('swarm_weekly_reminders', JSON.stringify(updated));
       
       if (response.ok) {
         const data = await response.json();
+        setSubscribedEmails(updated);
+        localStorage.setItem('swarm_weekly_reminders', JSON.stringify(updated));
         setStatus('success');
         setErrorMessage(isReplacement ? 'Your active subscription email has been updated. A welcome confirmation has been sent!' : 'A welcome confirmation email has been sent!');
         if (data.previewUrl) {
           setPreviewUrl(data.previewUrl);
         }
+        setEmail('');
       } else {
         const errData = await response.json();
-        setStatus('success'); // Still succeed locally
-        setErrorMessage(isReplacement ? 'Your subscription was updated, but the welcome email failed: ' + (errData.error || '') : 'Subscribed locally, but failed to send welcome email: ' + (errData.error || ''));
+        setStatus('idle');
+        setErrorMessage(errData.error || 'Failed to send welcome email. Please try again.');
+        if (errData.previewUrl) {
+          setPreviewUrl(errData.previewUrl);
+        }
       }
-      setEmail('');
     })
     .catch((error) => {
       console.error("Subscription API error:", error);
-      const isReplacement = subscribedEmails.length > 0 && !subscribedEmails.includes(email.toLowerCase());
-      const updated = [email.toLowerCase()];
-      setSubscribedEmails(updated);
-      localStorage.setItem('swarm_weekly_reminders', JSON.stringify(updated));
-      setStatus('success');
-      setErrorMessage(isReplacement ? 'Your active subscription email has been updated.' : 'Subscription enabled!');
-      setEmail('');
+      setStatus('idle');
+      setErrorMessage('Network error while subscribing. Please try again.');
     });
   };
 

@@ -10,6 +10,75 @@ import { WebSocketServer, WebSocket } from "ws";
 
 dotenv.config();
 
+/**
+ * Shared email sender handling Resend (preferred), SMTP, or Ethereal (local dev).
+ */
+async function sendEmail({ to, subject, html, text }: { to: string; subject: string; html: string; text?: string }) {
+  const from = process.env.EMAIL_FROM || process.env.SMTP_FROM || '"Lions Swarm AI" <noreply@lionscanner.net>';
+
+  // 1. Resend (Preferred)
+  if (process.env.RESEND_API_KEY) {
+    try {
+      const response = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${process.env.RESEND_API_KEY}`
+        },
+        body: JSON.stringify({ from, to, subject, html, text: text || "" })
+      });
+      
+      const data = await response.json();
+      if (!response.ok) {
+        return { success: false, error: `[Email/Resend] Delivery error: ${data.message || JSON.stringify(data)}` };
+      }
+      return { success: true, provider: "resend", id: data.id };
+    } catch (error: any) {
+      return { success: false, error: `[Email/Resend] Network error: ${error.message || String(error)}` };
+    }
+  }
+  
+  // 2. SMTP (Backward compatibility)
+  if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
+    try {
+      const transporter = nodemailer.createTransport({
+        host: process.env.SMTP_HOST,
+        port: parseInt(process.env.SMTP_PORT || "587"),
+        secure: process.env.SMTP_PORT === "465",
+        auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
+      });
+      
+      await transporter.sendMail({ from, to, subject, text, html });
+      return { success: true, provider: "smtp" };
+    } catch (err: any) {
+      return { success: false, error: `[Email/SMTP] Delivery error: ${err.message || String(err)}` };
+    }
+  }
+
+  // 3. Ethereal (Dev fallback)
+  try {
+    const testAccount = await nodemailer.createTestAccount();
+    const transporter = nodemailer.createTransport({
+      host: "smtp.ethereal.email",
+      port: 587,
+      secure: false,
+      auth: { user: testAccount.user, pass: testAccount.pass }
+    });
+
+    const info = await transporter.sendMail({ from, to, subject, text, html });
+    const previewUrl = nodemailer.getTestMessageUrl(info) || "";
+
+    console.log(`\n================== TEST EMAIL SENT (ETHEREAL) ==================`);
+    console.log(`To: ${to}`);
+    console.log(`Preview URL: ${previewUrl}`);
+    console.log(`================================================================\n`);
+    
+    return { success: false, error: "No provider configured", previewUrl };
+  } catch (err: any) {
+    return { success: false, error: `[Email/Ethereal] Delivery error: ${err.message || String(err)}` };
+  }
+}
+
 const FALLBACK_QUOTES: Record<string, { name: string; price: number; change_24h: number; volume: number; market_cap: number; high: number; low: number }> = {
   TSLA: { name: "Tesla, Inc.", price: 185.50, change_24h: 1.45, volume: 85400000, market_cap: 580000000000, high: 188.20, low: 183.10 },
   AAPL: { name: "Apple Inc.", price: 212.40, change_24h: -0.35, volume: 52100000, market_cap: 3250000000000, high: 214.50, low: 211.20 },
@@ -578,6 +647,77 @@ async function startServer() {
     }
   });
 
+  // Cached market movers
+  let cachedMarketMovers: any = null;
+  let lastMarketMoversFetchTime = 0;
+
+  app.get("/api/coingecko/market-movers", async (req, res) => {
+    try {
+      const now = Date.now();
+      // Cache for 5 minutes (300000 ms)
+      if (cachedMarketMovers && now - lastMarketMoversFetchTime < 300000) {
+        return res.json(cachedMarketMovers);
+      }
+
+      const data = await fetchFromCoinGecko("/coins/markets", {
+        vs_currency: "usd",
+        order: "market_cap_desc",
+        per_page: 100,
+        page: 1,
+        sparkline: false
+      });
+
+      if (!Array.isArray(data)) {
+        throw new Error("Invalid data format from CoinGecko");
+      }
+
+      const stablecoins = ['USDT', 'USDC', 'DAI', 'FDUSD', 'USDD', 'TUSD', 'USDE'];
+      const nonStableData = data.filter(coin => !stablecoins.includes(coin.symbol.toUpperCase()));
+
+      const top10MarketCap = nonStableData.slice(0, 10).map(coin => ({
+        symbol: coin.symbol.toUpperCase(),
+        price: coin.current_price,
+        change24h: coin.price_change_percentage_24h
+      }));
+
+      const sortedByGain = [...nonStableData].sort((a, b) => (b.price_change_percentage_24h || 0) - (a.price_change_percentage_24h || 0));
+      const top10Gainers = sortedByGain.slice(0, 10).map(coin => ({
+        symbol: coin.symbol.toUpperCase(),
+        price: coin.current_price,
+        change24h: coin.price_change_percentage_24h
+      }));
+
+      const sortedByLoss = [...nonStableData].sort((a, b) => (a.price_change_percentage_24h || 0) - (b.price_change_percentage_24h || 0));
+      const top10Losers = sortedByLoss.slice(0, 10).map(coin => ({
+        symbol: coin.symbol.toUpperCase(),
+        price: coin.current_price,
+        change24h: coin.price_change_percentage_24h
+      }));
+
+      cachedMarketMovers = {
+        top10MarketCap,
+        top10Gainers,
+        top10Losers,
+        timestamp: now
+      };
+      lastMarketMoversFetchTime = now;
+
+      res.json(cachedMarketMovers);
+    } catch (error: any) {
+      console.error("Error fetching market movers:", error.message);
+      // Return fallback data
+      const stablecoins = ['USDT', 'USDC', 'DAI', 'FDUSD', 'USDD', 'TUSD', 'USDE'];
+      const nonStableFallback = Object.values(FALLBACK_QUOTES).filter(q => !stablecoins.includes(q.name.toUpperCase()));
+      const fallbackData = {
+        top10MarketCap: nonStableFallback.slice(0, 10).map(q => ({ symbol: q.name, price: q.price, change24h: q.change_24h })),
+        top10Gainers: nonStableFallback.filter(q => q.change_24h > 0).sort((a, b) => b.change_24h - a.change_24h).slice(0, 10).map(q => ({ symbol: q.name, price: q.price, change24h: q.change_24h })),
+        top10Losers: nonStableFallback.filter(q => q.change_24h < 0).sort((a, b) => a.change_24h - b.change_24h).slice(0, 10).map(q => ({ symbol: q.name, price: q.price, change24h: q.change_24h })),
+        timestamp: Date.now()
+      };
+      res.json(fallbackData);
+    }
+  });
+
   // Backward compatible route mapping for CMC queries backed by CoinGecko
   app.get("/api/cmc/quote", async (req, res) => {
     try {
@@ -866,34 +1006,19 @@ Please output your analysis as a JSON object with the following fields:
         </div>
       `;
 
-      if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
-        const transporter = nodemailer.createTransport({
-          host: process.env.SMTP_HOST,
-          port: parseInt(process.env.SMTP_PORT || "587"),
-          secure: process.env.SMTP_PORT === "465",
-          auth: {
-            user: process.env.SMTP_USER,
-            pass: process.env.SMTP_PASS
-          }
+      try {
+        const result = await sendEmail({
+          to: email,
+          subject: `🦁 7-Day Update: ${daysVal} Days Left to Bear Market Bottom!`,
+          html: emailHtml
         });
-
-        try {
-          await transporter.sendMail({
-            from: '"Lions Swarm AI" <brandon@gamersave.com>',
-            to: email,
-            subject: `🦁 7-Day Update: ${daysVal} Days Left to Bear Market Bottom!`,
-            html: emailHtml
-          });
-          console.log(`[Clock Scheduler] Weekly snapshot email successfully sent to ${email}`);
-        } catch (err) {
-          console.error(`[Clock Scheduler Error] Failed to send email to ${email}:`, err);
+        if (result.success) {
+          console.log(`[Clock Scheduler] Weekly snapshot email successfully sent to ${email} (via ${result.provider})`);
+        } else {
+          console.error(`[Clock Scheduler Error] Failed to send email to ${email}:`, result.error);
         }
-      } else {
-        console.log(`\n================== SIMULATED WEEKLY UPDATE SENT ==================`);
-        console.log(`To: ${email}`);
-        console.log(`Subject: 🦁 7-Day Update: ${daysVal} Days Left to Bear Market Bottom!`);
-        console.log(`Content:\n${emailHtml}`);
-        console.log(`==========================================================\n`);
+      } catch (err: any) {
+        console.error(`[Clock Scheduler Error] Exception sending email to ${email}:`, err.message || err);
       }
     }
   }
@@ -959,14 +1084,6 @@ Please output your analysis as a JSON object with the following fields:
 
       console.log(`[Clock Subscription] Received subscription request for email: ${email}`);
 
-      // Save email in persistent subscribers list
-      const subscribers = getSubscribers();
-      if (!subscribers.includes(email)) {
-        subscribers.push(email);
-        saveSubscribers(subscribers);
-        console.log(`[Clock Subscription] Saved new subscriber to file: ${email}`);
-      }
-
       // Calculate target countdown clock snapshot values at the time of subscription
       const targetDate = new Date('2026-10-01T00:00:00');
       const now = new Date();
@@ -989,6 +1106,10 @@ Please output your analysis as a JSON object with the following fields:
         minutes = String(minutesVal).padStart(2, '0');
         seconds = String(secondsVal).padStart(2, '0');
       }
+
+      const nextDate = new Date();
+      nextDate.setDate(nextDate.getDate() + 7);
+      const nextDateString = nextDate.toLocaleDateString("en-US", { month: "long", day: "numeric" });
 
       // Determine robust App URL
       const reqHost = req.get('host') || "localhost:3000";
@@ -1017,13 +1138,13 @@ Please output your analysis as a JSON object with the following fields:
             <h3 style="color: #f8fafc; font-size: 18px; font-weight: bold; margin-bottom: 15px;">Thanks for Subscribing!</h3>
             
             <p style="color: #cbd5e1; font-size: 14px; line-height: 1.6; margin-bottom: 20px;">
-              Thank you so much for subscribing to the <strong>Bear Market Bottom Countdown Clock alerts</strong>. We're thrilled to have you join our elite swarm of disciplined market observers!
+              Thank you so much for subscribing to the <strong>lionscanner.net Bear Market Bottom Countdown Clock alerts</strong>. We're thrilled to have you join our elite swarm of disciplined market observers!
             </p>
 
             <div style="background-color: rgba(249, 115, 22, 0.08); border-left: 4px solid #f97316; padding: 15px; border-radius: 4px; margin-bottom: 25px;">
               <p style="color: #f97316; font-size: 13px; font-weight: bold; margin: 0 0 5px 0; font-family: monospace;">NOTIFICATION SCHEDULE</p>
               <p style="color: #cbd5e1; font-size: 13px; margin: 0; line-height: 1.5;">
-                You will receive a snapshot of the countdown clock <strong>every 7 days at 7:00 AM PST</strong> directly in your inbox.
+                You will receive a snapshot of the countdown clock <strong>every 7 days</strong> directly in your inbox. Your first update will arrive on ${nextDateString}.
               </p>
             </div>
 
@@ -1126,67 +1247,44 @@ Please output your analysis as a JSON object with the following fields:
 
 Thanks for Subscribing!
 
-Thank you so much for subscribing to the Bear Market Bottom Countdown Clock alerts. We're thrilled to have you join our elite swarm of disciplined market observers!
+Thank you so much for subscribing to the lionscanner.net Bear Market Bottom Countdown Clock alerts. We're thrilled to have you join our elite swarm of disciplined market observers!
 
 --------------------------------------------------
 🔴 LIVE CLOCK SNAPSHOT AT SUBSCRIPTION:
 Time Remaining: ${daysVal} Days, ${hoursVal} Hours, ${minutesVal} Minutes, ${secondsVal} Seconds left until October 1st, 2026.
 --------------------------------------------------
 
-You will receive a snapshot of the countdown clock every 7 days at 7:00 AM PST directly in your inbox.
+You will receive a snapshot of the countdown clock every 7 days directly in your inbox. Your first update will arrive on ${nextDateString}.
 
 Explore Active Swarm Tools at ${appUrl}
 
 To unsubscribe, go to ${unsubscribeUrl}`;
 
       let previewUrl = "";
-      // Check if SMTP is configured, else fallback to console logging
-      if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
-        const transporter = nodemailer.createTransport({
-          host: process.env.SMTP_HOST,
-          port: parseInt(process.env.SMTP_PORT || "587"),
-          secure: process.env.SMTP_PORT === "465",
-          auth: {
-            user: process.env.SMTP_USER,
-            pass: process.env.SMTP_PASS
-          }
-        });
+      
+      const result = await sendEmail({
+        to: email,
+        subject: "🦁 Welcome: Weekly Bear Market Bottom Countdown Updates Enabled",
+        text: textContent,
+        html: emailHtml
+      });
 
-        await transporter.sendMail({
-          from: '"Lions Swarm AI" <brandon@gamersave.com>',
-          to: email,
-          subject: "🦁 Welcome: Weekly Bear Market Bottom Countdown Updates Enabled",
-          text: textContent,
-          html: emailHtml
-        });
-        
-        console.log(`[Clock Subscription] Real email successfully sent to ${email}`);
-      } else {
-        const testAccount = await nodemailer.createTestAccount();
-        const transporter = nodemailer.createTransport({
-          host: "smtp.ethereal.email",
-          port: 587,
-          secure: false,
-          auth: {
-            user: testAccount.user,
-            pass: testAccount.pass
-          }
-        });
+      if (!result.success) {
+        if (result.error === "No provider configured") {
+          return res.status(502).json({ error: result.error, previewUrl: result.previewUrl });
+        }
+        return res.status(502).json({ error: result.error });
+      }
 
-        const info = await transporter.sendMail({
-          from: '"Lions Swarm AI" <brandon@gamersave.com>',
-          to: email,
-          subject: "🦁 Welcome: Weekly Bear Market Bottom Countdown Updates Enabled",
-          text: textContent,
-          html: emailHtml
-        });
+      previewUrl = result.previewUrl || "";
+      console.log(`[Clock Subscription] Email successfully sent to ${email} (via ${result.provider})`);
 
-        previewUrl = nodemailer.getTestMessageUrl(info) || "";
-
-        console.log(`\n================== TEST EMAIL SENT (ETHEREAL) ==================`);
-        console.log(`To: ${email}`);
-        console.log(`Preview URL: ${previewUrl}`);
-        console.log(`================================================================\n`);
+      // Save email in persistent subscribers list ONLY after successful email
+      const subscribers = getSubscribers();
+      if (!subscribers.includes(email)) {
+        subscribers.push(email);
+        saveSubscribers(subscribers);
+        console.log(`[Clock Subscription] Saved new subscriber to file: ${email}`);
       }
 
       res.json({ success: true, message: "Welcome email sent successfully.", previewUrl });
@@ -1348,9 +1446,11 @@ To unsubscribe, go to ${unsubscribeUrl}`;
     const wss = new WebSocketServer({ noServer: true });
 
     httpServer.on("upgrade", (request: any, socket: any, head: any) => {
-      wss.handleUpgrade(request, socket, head, (ws) => {
-        wss.emit("connection", ws, request);
-      });
+      if (request.url === '/api/ws') {
+        wss.handleUpgrade(request, socket, head, (ws) => {
+          wss.emit("connection", ws, request);
+        });
+      }
     });
 
     let livePrices = {
