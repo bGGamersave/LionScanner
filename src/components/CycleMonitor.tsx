@@ -80,7 +80,7 @@ export default function CycleMonitor() {
   // Set up WebSocket listener
   useEffect(() => {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}`;
+    const wsUrl = `${protocol}//${window.location.host}/api/ws`;
     let socket: WebSocket | null = null;
     let reconnectTimeout: any = null;
 

@@ -119,12 +119,15 @@ export default function FullPortTimer() {
         if (data.previewUrl) {
           setPreviewUrl(data.previewUrl);
         }
+        setEmail('');
       } else {
         // Do not claim success: the welcome email genuinely was not sent.
         setStatus('error');
         setErrorMessage(data.error || 'Failed to send the welcome email. Please try again.');
+        if (data.previewUrl) {
+          setPreviewUrl(data.previewUrl);
+        }
       }
-      setEmail('');
     })
     .catch((error) => {
       console.error("Subscription API error:", error);

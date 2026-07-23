@@ -22,7 +22,8 @@ import {
   X,
   RefreshCw,
   Lock,
-  Gauge
+  Gauge,
+  Zap
 } from 'lucide-react';
 import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -40,6 +41,7 @@ import Chart from './components/Chart';
 import FullPortTimer from './components/FullPortTimer';
 import ProfileModal from './components/ProfileModal';
 import WalletDetailsModal from './components/WalletDetailsModal';
+import MarketTicker from './components/MarketTicker';
 import type { SnapshotData } from './components/Snapshots';
 // Heavy, conditionally-rendered views are code-split so the initial load stays light.
 const Snapshots = lazy(() => import('./components/Snapshots'));
@@ -120,7 +122,7 @@ export default function App() {
   const [aiInitialPrompt, setAiInitialPrompt] = useState<string | null>(null);
 
   // --- Quantitative Strategy Hub State ---
-  const [strategyCycleHigh, setStrategyCycleHigh] = useState<number>(69000);
+  const [strategyCycleHigh, setStrategyCycleHigh] = useState<number>(126198);
   const [strategyCycleLow, setStrategyCycleLow] = useState<number>(15500);
   const [strategySimPrice, setStrategySimPrice] = useState<number>(45000);
   const [strategyGreenDotTimeframes, setStrategyGreenDotTimeframes] = useState<string[]>([]);
@@ -146,9 +148,15 @@ export default function App() {
     return parseInt(saved, 10);
   });
 
+  const getResetDateString = () => {
+    const now = new Date();
+    const shifted = new Date(now.getTime() - 20 * 60 * 60 * 1000);
+    return shifted.toDateString();
+  };
+
   const [dailySearchCount, setDailySearchCount] = useState<number>(() => {
     const savedDate = localStorage.getItem('swarm_search_date');
-    const today = new Date().toDateString();
+    const today = getResetDateString();
     if (savedDate !== today) {
       localStorage.setItem('swarm_search_date', today);
       localStorage.setItem('swarm_search_count', '0');
@@ -159,7 +167,7 @@ export default function App() {
 
   const [dailyChatCount, setDailyChatCount] = useState<number>(() => {
     const savedDate = localStorage.getItem('swarm_chat_date');
-    const today = new Date().toDateString();
+    const today = getResetDateString();
     if (savedDate !== today) {
       localStorage.setItem('swarm_chat_date', today);
       localStorage.setItem('swarm_chat_count', '0');
@@ -271,7 +279,7 @@ export default function App() {
   // API Pulls State Tracking
   const [dailyApiCount, setDailyApiCount] = useState<number>(() => {
     const savedDate = localStorage.getItem('swarm_api_date');
-    const today = new Date().toDateString();
+    const today = getResetDateString();
     if (savedDate !== today) {
       localStorage.setItem('swarm_api_date', today);
       localStorage.setItem('swarm_api_count', '0');
@@ -288,6 +296,12 @@ export default function App() {
   };
 
   const handleLoginRecalculation = async () => {
+    const apiLimit = TIER_LIMITS[userTier].maxApiRequests;
+    if (dailyApiCount >= apiLimit) {
+      setToastMessage(`You have reached your daily limit of synchronization (${apiLimit} requests) for the ${TIER_LIMITS[userTier].label}. Upgrade to unlock higher allowances.`);
+      return;
+    }
+
     setIsRecalculating(true);
     setRecalcStep('Initializing secure swarm session...');
     
@@ -369,7 +383,7 @@ export default function App() {
   };
 
   const incrementSearchCount = () => {
-    const today = new Date().toDateString();
+    const today = getResetDateString();
     localStorage.setItem('swarm_search_date', today);
     const newCount = dailySearchCount + 1;
     setDailySearchCount(newCount);
@@ -377,7 +391,7 @@ export default function App() {
   };
 
   const incrementChatCount = () => {
-    const today = new Date().toDateString();
+    const today = getResetDateString();
     localStorage.setItem('swarm_chat_date', today);
     const newCount = dailyChatCount + 1;
     setDailyChatCount(newCount);
@@ -415,7 +429,7 @@ export default function App() {
     // GUARD: Check API Limits before pulling
     const apiLimit = TIER_LIMITS[userTier].maxApiRequests;
     if (dailyApiCount >= apiLimit) {
-      setToastMessage(`Daily API limit exceeded (${dailyApiCount}/${apiLimit} pulls) for your ${TIER_LIMITS[userTier].label}. Upgrade to unlock higher allowances.`);
+      setToastMessage(`You have reached your daily limit of synchronization (${apiLimit} requests) for the ${TIER_LIMITS[userTier].label}. Upgrade to unlock higher allowances.`);
       return;
     }
 
@@ -515,7 +529,7 @@ Establish position in the current accumulation range with a stop loss below **$$
       // GUARD: Check API Limits before pulling
       const apiLimit = TIER_LIMITS[userTier].maxApiRequests;
       if (dailyApiCount >= apiLimit) {
-        setToastMessage(`Daily API limit exceeded (${dailyApiCount}/${apiLimit} pulls) for your ${TIER_LIMITS[userTier].label}. Upgrade to unlock higher allowances.`);
+        setToastMessage(`You have reached your daily limit of synchronization (${apiLimit} requests) for the ${TIER_LIMITS[userTier].label}. Upgrade to unlock higher allowances.`);
         return;
       }
 
@@ -821,6 +835,19 @@ Establish position in the current accumulation range with a stop loss below **$$
               <Badge variant="outline" className="ml-auto border-orange-500/30 text-orange-400 text-[8px] font-mono font-bold">QUANT</Badge>
             </Button>
             <Button 
+              variant="ghost"
+              className="w-full justify-start pl-8 text-muted-foreground hover:text-foreground h-8 text-xs -mt-1"
+              onClick={() => {
+                setActiveTab('strategy');
+                setTimeout(() => {
+                  document.getElementById('leverage-simulator')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }, 100);
+              }}
+            >
+              <Zap className="mr-2 h-3 w-3 text-orange-500" />
+              Leverage Trade Simulator
+            </Button>
+            <Button 
               variant={activeTab === 'monitor' ? 'secondary' : 'ghost'} 
               className={`w-full justify-start ${activeTab !== 'monitor' ? 'text-muted-foreground hover:text-foreground' : ''}`}
               onClick={() => setActiveTab('monitor')}
@@ -828,6 +855,15 @@ Establish position in the current accumulation range with a stop loss below **$$
               <Gauge className="mr-2 h-4 w-4 text-orange-400" />
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-400 via-amber-500 to-yellow-500 font-bold">Cycle Monitor</span>
               <Badge variant="outline" className="ml-auto border-orange-500/30 text-orange-400 text-[8px] font-mono font-bold">ENGINE</Badge>
+            </Button>
+            <Button 
+              variant="ghost"
+              className="w-full justify-start text-muted-foreground hover:text-foreground"
+              onClick={handleLoginRecalculation}
+              disabled={isRecalculating}
+            >
+              <RefreshCw className={`mr-2 h-4 w-4 ${isRecalculating ? 'animate-spin text-primary' : 'text-primary'}`} />
+              Sync & Recalc AI
             </Button>
 
             {/* Membership Status Section */}
@@ -969,12 +1005,7 @@ Establish position in the current accumulation range with a stop loss below **$$
           </div>
           
           <div className="flex items-center gap-2 md:gap-4">
-            <Button variant="outline" size="sm" onClick={handleLoginRecalculation} disabled={isRecalculating} className="border-border hover:bg-muted text-muted-foreground h-8 px-2.5 sm:px-3 text-xs flex items-center gap-1.5 cursor-pointer font-mono font-medium">
-              <RefreshCw className={`w-3.5 h-3.5 ${isRecalculating ? 'animate-spin text-primary' : ''}`} />
-              <span className="hidden sm:inline">Sync & Recalc AI</span>
-              <span className="sm:hidden">Recalc</span>
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => { setSubscriptionTriggerReason('upgrade'); setIsSubscriptionModalOpen(true); }} className="border-amber-500 hover:bg-amber-500/10 text-amber-500 h-8 px-2.5 sm:px-3 text-xs flex items-center gap-1.5 cursor-pointer font-bold transition-all shadow-sm shadow-amber-500/10">
+            <Button variant="outline" size="sm" onClick={() => { setSubscriptionTriggerReason('upgrade'); setIsSubscriptionModalOpen(true); }} className="border-amber-500 hover:bg-amber-500/10 text-amber-500 h-8 px-2.5 sm:px-3 text-xs hidden sm:flex items-center gap-1.5 cursor-pointer font-bold transition-all shadow-sm shadow-amber-500/10">
               <Sparkles className="w-3.5 h-3.5 text-amber-500 animate-pulse" />
               <span>Upgrade</span>
             </Button>
@@ -1009,6 +1040,9 @@ Establish position in the current accumulation range with a stop loss below **$$
             </div>
           </div>
         </header>
+
+        {/* Market Ticker (Top 10 / Gainers / Losers) */}
+        <MarketTicker />
 
         {/* Dynamic Content View */}
         <div className="flex-1 flex overflow-hidden relative">

@@ -34,7 +34,7 @@ const INITIAL_MESSAGE: Message = {
 };
 
 export default function AIChat({
-  selectedSnapshot, 
+  selectedSnapshot,
   onClearSnapshot, 
   onClose,
   initialPrompt,

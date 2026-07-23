@@ -725,6 +725,77 @@ async function startServer() {
     }
   });
 
+  // Cached market movers
+  let cachedMarketMovers: any = null;
+  let lastMarketMoversFetchTime = 0;
+
+  app.get("/api/coingecko/market-movers", async (req, res) => {
+    try {
+      const now = Date.now();
+      // Cache for 5 minutes (300000 ms)
+      if (cachedMarketMovers && now - lastMarketMoversFetchTime < 300000) {
+        return res.json(cachedMarketMovers);
+      }
+
+      const data = await fetchFromCoinGecko("/coins/markets", {
+        vs_currency: "usd",
+        order: "market_cap_desc",
+        per_page: 100,
+        page: 1,
+        sparkline: false
+      });
+
+      if (!Array.isArray(data)) {
+        throw new Error("Invalid data format from CoinGecko");
+      }
+
+      const stablecoins = ['USDT', 'USDC', 'DAI', 'FDUSD', 'USDD', 'TUSD', 'USDE'];
+      const nonStableData = data.filter(coin => !stablecoins.includes(coin.symbol.toUpperCase()));
+
+      const top10MarketCap = nonStableData.slice(0, 10).map(coin => ({
+        symbol: coin.symbol.toUpperCase(),
+        price: coin.current_price,
+        change24h: coin.price_change_percentage_24h
+      }));
+
+      const sortedByGain = [...nonStableData].sort((a, b) => (b.price_change_percentage_24h || 0) - (a.price_change_percentage_24h || 0));
+      const top10Gainers = sortedByGain.slice(0, 10).map(coin => ({
+        symbol: coin.symbol.toUpperCase(),
+        price: coin.current_price,
+        change24h: coin.price_change_percentage_24h
+      }));
+
+      const sortedByLoss = [...nonStableData].sort((a, b) => (a.price_change_percentage_24h || 0) - (b.price_change_percentage_24h || 0));
+      const top10Losers = sortedByLoss.slice(0, 10).map(coin => ({
+        symbol: coin.symbol.toUpperCase(),
+        price: coin.current_price,
+        change24h: coin.price_change_percentage_24h
+      }));
+
+      cachedMarketMovers = {
+        top10MarketCap,
+        top10Gainers,
+        top10Losers,
+        timestamp: now
+      };
+      lastMarketMoversFetchTime = now;
+
+      res.json(cachedMarketMovers);
+    } catch (error: any) {
+      console.error("Error fetching market movers:", error.message);
+      // Return fallback data
+      const stablecoins = ['USDT', 'USDC', 'DAI', 'FDUSD', 'USDD', 'TUSD', 'USDE'];
+      const nonStableFallback = Object.values(FALLBACK_QUOTES).filter(q => !stablecoins.includes(q.name.toUpperCase()));
+      const fallbackData = {
+        top10MarketCap: nonStableFallback.slice(0, 10).map(q => ({ symbol: q.name, price: q.price, change24h: q.change_24h })),
+        top10Gainers: nonStableFallback.filter(q => q.change_24h > 0).sort((a, b) => b.change_24h - a.change_24h).slice(0, 10).map(q => ({ symbol: q.name, price: q.price, change24h: q.change_24h })),
+        top10Losers: nonStableFallback.filter(q => q.change_24h < 0).sort((a, b) => a.change_24h - b.change_24h).slice(0, 10).map(q => ({ symbol: q.name, price: q.price, change24h: q.change_24h })),
+        timestamp: Date.now()
+      };
+      res.json(fallbackData);
+    }
+  });
+
   // Backward compatible route mapping for CMC queries backed by CoinGecko
   app.get("/api/cmc/quote", async (req, res) => {
     try {
@@ -1153,7 +1224,7 @@ Please output your analysis as a JSON object with the following fields:
             <h3 style="color: #f8fafc; font-size: 18px; font-weight: bold; margin-bottom: 15px;">Thanks for Subscribing!</h3>
             
             <p style="color: #cbd5e1; font-size: 14px; line-height: 1.6; margin-bottom: 20px;">
-              Thank you so much for subscribing to the <strong>Bear Market Bottom Countdown Clock alerts</strong>. We're thrilled to have you join our elite swarm of disciplined market observers!
+              Thank you so much for subscribing to the <strong>lionscanner.net Bear Market Bottom Countdown Clock alerts</strong>. We're thrilled to have you join our elite swarm of disciplined market observers!
             </p>
 
             <div style="background-color: rgba(249, 115, 22, 0.08); border-left: 4px solid #f97316; padding: 15px; border-radius: 4px; margin-bottom: 25px;">
@@ -1262,7 +1333,7 @@ Please output your analysis as a JSON object with the following fields:
 
 Thanks for Subscribing!
 
-Thank you so much for subscribing to the Bear Market Bottom Countdown Clock alerts. We're thrilled to have you join our elite swarm of disciplined market observers!
+Thank you so much for subscribing to the lionscanner.net Bear Market Bottom Countdown Clock alerts. We're thrilled to have you join our elite swarm of disciplined market observers!
 
 --------------------------------------------------
 🔴 LIVE CLOCK SNAPSHOT AT SUBSCRIPTION:
@@ -1288,6 +1359,7 @@ To unsubscribe, go to ${unsubscribeUrl}`;
           previewUrl: sendResult.previewUrl,
         });
       }
+      console.log(`[Clock Subscription] Email successfully sent to ${email} (via ${sendResult.provider})`);
 
       // Only persist the subscription once the welcome email is actually delivered,
       // so a failed send doesn't leave us with a subscriber who never saw a welcome.
@@ -1773,9 +1845,11 @@ To unsubscribe, go to ${unsubscribeUrl}`;
     const wss = new WebSocketServer({ noServer: true });
 
     httpServer.on("upgrade", (request: any, socket: any, head: any) => {
-      wss.handleUpgrade(request, socket, head, (ws) => {
-        wss.emit("connection", ws, request);
-      });
+      if (request.url === '/api/ws') {
+        wss.handleUpgrade(request, socket, head, (ws) => {
+          wss.emit("connection", ws, request);
+        });
+      }
     });
 
     let livePrices = {
