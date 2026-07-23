@@ -73,3 +73,35 @@ Status legend: ✅ done in code · ⚙️ needs config/secret before launch · �
   `entitlement-codes.json`, clock files) are gitignored. On Cloud Run these live
   on the container's ephemeral disk and are lost on restart/redeploy — move them
   to a database or persistent volume before scaling beyond a single instance.
+
+## 6. Known limitations (from the focused-fix scope) — address before monetized scale
+
+These were consciously deferred; they don't block a soft launch but matter before
+payments carry real weight or the app runs on more than one instance:
+
+- **Analysis tokens are a client-side balance.** Purchased tokens live in the
+  browser (`localStorage`), so a determined user can edit their token count. The paid
+  **membership tier** is server-verified, but tokens are not tamper-proof. Full
+  enforcement needs a server-authoritative token ledger (a `/spend` endpoint the
+  client calls per use) — intentionally not built yet. (Because tokens are local,
+  they also don't transfer across devices; the tier does, via the email-code claim.)
+- **Protected API endpoints are not gated by tier server-side.** Tier gating is
+  enforced only in the client UI; the AI/market endpoints don't check the caller's
+  entitlement. Add server-side tier checks (verify the claim token + tier) on
+  protected routes before relying on tiers for monetization.
+- **Payment/entitlement storage is ephemeral JSON (single instance).** Confirmed
+  payments and entitlements won't survive a restart/redeploy and aren't shared across
+  instances. Migrate to a database (e.g. Postgres/Firestore) before scaling. Until
+  then, if `ENTITLEMENT_SECRET` is unset the server uses a random per-boot secret, so
+  claim tokens also reset on restart — set `ENTITLEMENT_SECRET` explicitly.
+
+## Security fixes since the initial checklist
+
+- Entitlement claim tokens can no longer be forged: the HMAC secret never falls back
+  to a hardcoded value (uses `ENTITLEMENT_SECRET`/`ADMIN_API_KEY`, else a random
+  per-process secret).
+- Fixed a free-token-refill bug (page reload no longer restores spent tokens).
+- Access codes use a CSPRNG, a 60s resend cooldown, and a non-enumerable generic
+  response (requesting a code no longer reveals whether an email holds a plan).
+- Payment verification confirms + grants in an atomic re-check, preventing a
+  double-grant race from concurrent verifies.
